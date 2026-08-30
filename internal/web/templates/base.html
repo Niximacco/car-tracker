@@ -24,7 +24,7 @@
     <a class="brand" href="/">
       <i class="ico fa-solid fa-gauge-high" aria-hidden="true"></i>{{.SiteName}}
     </a>
-    <a href="/" class="tab {{if eq .Nav "garage"}}on{{end}}">
+    <a href="/garage" class="tab {{if eq .Nav "garage"}}on{{end}}">
       <i class="ico fa-solid fa-car-side" aria-hidden="true"></i>Garage
     </a>
     {{if not .ViewOnly}}
@@ -60,7 +60,7 @@
      is ever on screen: the css shows this one and hides the row in the nav
      above it below the breakpoint, and hides this one above it. -->
 <div class="tabbar">
-  <a href="/" class="{{if eq .Nav "garage"}}on{{end}}">
+  <a href="/garage" class="{{if eq .Nav "garage"}}on{{end}}">
     <i class="ico fa-solid fa-car-side" aria-hidden="true"></i>Garage
   </a>
   {{if not .ViewOnly}}

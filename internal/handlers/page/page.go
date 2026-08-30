@@ -16,14 +16,81 @@ import (
 )
 
 func AddPagesV1(router *gin.Engine) {
-	router.GET("/", auth.RequiredPage(), Garage)
+	router.GET("/", auth.RequiredPage(), Home)
+	router.GET("/garage", auth.RequiredPage(), Garage)
+	router.POST("/vehicles/default", auth.RequiredPage(), access.CanEdit(), SetDefault)
 
 	router.GET("/profile", auth.RequiredPage(), Profile)
 	router.POST("/profile", auth.RequiredPage(), access.CanEdit(), SaveProfile)
 }
 
-// Garage is the front page: every car this account may see, with enough of each
-// one's summary to tell them apart and to see which is costing you.
+// Home is what opening the site does.
+//
+// A household with one car it actually drives should not have to go through a
+// list of one to get to it, so an account that has picked a default lands on
+// that car. Everybody else lands in the garage, which is what "/" has always
+// been - and the garage is still a link away either way, at /garage, which is
+// where the navigation points.
+//
+// The default is checked here rather than trusted, because it is a slug written
+// down weeks ago: the car may have been deleted, or the sharing that made it
+// visible may have been taken away. Neither is worth an error page. Somebody
+// who opened the site wanted to see their cars, and the garage is that.
+func Home(c *gin.Context) {
+	user := auth.User(c)
+
+	slug := strings.TrimSpace(user.DefaultVehicle)
+	if slug == "" {
+		Garage(c)
+		return
+	}
+
+	vehicle, err := data.GetVehicle(slug)
+	if err != nil || (!user.Admin && !vehicle.CanBeSeenBy(user.Email)) {
+		Garage(c)
+		return
+	}
+
+	// Found rather than a permanent redirect: this is a preference, and a
+	// browser that cached "/" as one car would keep sending its owner there
+	// after they had changed their mind.
+	c.Redirect(http.StatusFound, "/vehicle/"+vehicle.Slug)
+}
+
+// SetDefault picks the car this account opens on, or clears the choice when the
+// posted slug is empty - which is how the garage's own button turns it off.
+//
+// It checks the visitor may see the car before writing it down. That is not
+// what protects the car, since its pages check on every visit; it is what keeps
+// a typed slug out of the user record, where it would sit as a pointer to
+// somebody else's vehicle that quietly does nothing.
+func SetDefault(c *gin.Context) {
+	slug := strings.TrimSpace(c.PostForm("slug"))
+
+	notice := "nodefault"
+	if slug != "" {
+		user := auth.User(c)
+
+		vehicle, err := data.GetVehicle(slug)
+		if err != nil || (!user.Admin && !vehicle.CanBeSeenBy(user.Email)) {
+			access.NotFound(c)
+			return
+		}
+
+		slug, notice = vehicle.Slug, "default"
+	}
+
+	if err := data.SetDefaultVehicle(auth.Email(c), slug); err != nil {
+		log.Printf("could not set a default vehicle: %s", err.Error())
+		access.Failed(c, "We couldn't save that. Please try again.")
+		return
+	}
+
+	access.Back(c, "/garage", notice)
+}
+
+// Garage is the list of cars: every one this account may see, with enough of
+// each one's summary to tell them apart and to see which is costing you.
 //
 // It reads each car's whole history to build those figures, which is one query
 // a car rather than one query. That is deliberate: a household has a handful of

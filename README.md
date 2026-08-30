@@ -111,7 +111,7 @@ not is worth more here than a page that never reloads.
 
 | | |
 |---|---|
-| **Garage** | Every car you own or have been shared on, with its odometer, its mpg, and what it costs a mile and a month |
+| **Garage** | Every car you own or have been shared on, with its odometer, its mpg, and what it costs a mile and a month — and on each card, a button straight to logging a fill-up or a service, and the star that makes that car the one the site opens on |
 | **Overview** | The block from the bottom of the spreadsheet, three charts, and the last few entries of each kind |
 | **Fuel log** | The whole history, with the sheet's own columns — including the running total, days owned and cost a day the sheet had headings for and never filled in — and the form that adds to it |
 | **Service** | Every visit, the work as the invoice listed it, the usual interval between visits, and how far it is been since the oil was done |

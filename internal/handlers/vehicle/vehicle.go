@@ -319,7 +319,7 @@ func Delete(c *gin.Context) {
 	}
 
 	log.Printf("deleted vehicle %s", vehicle.Slug)
-	access.Back(c, "/", "deleted")
+	access.Back(c, "/garage", "deleted")
 }
 
 // read pulls a vehicle out of a posted form, keeping whatever the form does not
