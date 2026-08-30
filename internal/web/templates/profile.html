@@ -1,0 +1,60 @@
+{{define "content"}}
+<div class="pagehead">
+  <div>
+    <h1>Your account</h1>
+    <p class="sub">{{.You.Email}}</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What to call you</h2>
+  <p class="small muted">
+    It goes beside the entries you log, which only matters on a vehicle two people share. Without one the pages
+    use the part of your address before the @.
+  </p>
+  <form method="post" action="/profile">
+    <div class="field">
+      <label for="name">Name</label>
+      <input id="name" type="text" name="name" value="{{.You.Name}}" placeholder="{{accountName .You.Email}}">
+    </div>
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-check" aria-hidden="true"></i>Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Your access</h2>
+  <ul class="rows">
+    <li>
+      <span>Signed in as</span><span class="spacer"></span><strong>{{.You.Email}}</strong>
+    </li>
+    <li>
+      <span>This account can</span><span class="spacer"></span>
+      <strong>
+        {{if .You.Admin}}manage every vehicle and who can sign in
+        {{else if .You.ViewOnly}}read, and change nothing
+        {{else}}log against its own vehicles and any shared with it{{end}}
+      </strong>
+    </li>
+    <li>
+      <span>Signed in since</span><span class="spacer"></span><strong>{{when .You.LastLogin}}</strong>
+    </li>
+    <li>
+      <span>Account created</span><span class="spacer"></span><strong>{{when .You.Created}}</strong>
+    </li>
+  </ul>
+  <p class="small muted" style="margin-top:14px">
+    Sign in is a link emailed to this address, and the session slides forward every time you come back. There is
+    no password to change and nothing to leak.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Signing out</h2>
+  <p class="small muted">This clears the session cookie in this browser. It does not sign you out anywhere else.</p>
+  <form method="post" action="/logout">
+    <button type="submit"><i class="ico fa-solid fa-right-from-bracket" aria-hidden="true"></i>Sign out</button>
+  </form>
+</div>
+{{end}}

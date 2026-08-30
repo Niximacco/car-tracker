@@ -1,0 +1,256 @@
+{{define "content"}}
+{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$o := .Report.Outlook}}{{$shop := .Report.Shop}}
+<div class="pagehead">
+  <div>
+    <h1>{{$v.Called}}</h1>
+    <p class="sub">
+      {{with $v.Described}}{{.}}{{end}}
+      {{if $v.Owned}}&middot; owned since {{day $v.PurchasedOn}} ({{days $s.DaysOwned}}){{end}}
+      {{if $v.Retired}}<span class="pill quiet">Retired</span>{{end}}
+    </p>
+  </div>
+  <span class="spacer"></span>
+  {{if not .ViewOnly}}
+    <a class="btn primary" href="/vehicle/{{$v.Slug}}/fuel#add"><i class="ico fa-solid fa-gas-pump" aria-hidden="true"></i>Log a fill-up</a>
+    <a class="btn" href="/vehicle/{{$v.Slug}}/service#add"><i class="ico fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>Log a service</a>
+  {{end}}
+</div>
+
+{{template "carnav" .}}
+
+{{if not .Report.Any}}
+  <div class="empty">
+    <h2>Nothing logged yet</h2>
+    <p>Log a fill-up, or bring four years of it in from a spreadsheet in one go.</p>
+    {{if .CanManage}}
+      <p style="margin-top:18px">
+        <a class="btn primary" href="/vehicle/{{$v.Slug}}/fuel#add">Log a fill-up</a>
+        <a class="btn" href="/vehicle/{{$v.Slug}}/import">Import a spreadsheet</a>
+      </p>
+    {{end}}
+  </div>
+{{else}}
+
+{{if not $v.Owned}}
+  <div class="banner warn">
+    <i class="ico fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    <span>This vehicle has no purchase date, so every per-day and per-month figure below is missing. {{if .CanManage}}<a href="/vehicle/{{$v.Slug}}/settings">Set one</a> and they all appear.{{end}}</span>
+  </div>
+{{end}}
+
+{{if $shop.OilOverdue}}
+  <div class="banner warn">
+    <i class="ico fa-solid fa-oil-can" aria-hidden="true"></i>
+    <span>An oil change is about {{miles $shop.MilesSinceOil}} miles back, against a usual interval of {{miles $shop.OilIntervalMiles}}. Last done {{day $shop.LastOil.On}} at {{miles $shop.LastOil.Odometer}}.</span>
+  </div>
+{{end}}
+
+<!-- The headline block. It is the bottom of the spreadsheet, in the order the
+     spreadsheet had it, because that is the order these have been read in for
+     four years. -->
+<div class="tiles">
+  <div class="tile accent">
+    <span class="label">Total miles</span>
+    <span class="value">{{miles $s.TotalMiles}}</span>
+    <span class="note">{{one $s.MilesPerDay}} a day</span>
+  </div>
+  <div class="tile">
+    <span class="label">Odometer</span>
+    <span class="value">{{miles $s.LatestOdometer}}</span>
+    <span class="note">{{if $o.EstimatedOdometer}}about {{miles $o.EstimatedOdometer}} today{{else}}last reading{{end}}</span>
+  </div>
+  <div class="tile">
+    <span class="label">Lifetime mpg</span>
+    <span class="value">{{mpg $s.CumulativeMPG}}</span>
+    <span class="note">{{mpg $s.MeasuredMPG}} measured tank to tank</span>
+  </div>
+  <div class="tile">
+    <span class="label">Total gallons</span>
+    <span class="value">{{gallons $s.TotalGallons}}</span>
+    <span class="note">{{dollars $s.AvgPriceCents}} a gallon average</span>
+  </div>
+  <div class="tile">
+    <span class="label">Days owned</span>
+    <span class="value">{{count $s.DaysOwned}}</span>
+    <span class="note">{{days $s.DaysOwned}}</span>
+  </div>
+</div>
+
+<div class="tiles">
+  <div class="tile">
+    <span class="label">Fuel</span>
+    <span class="value">{{money $s.FuelCents}}</span>
+    <span class="note">{{cents $s.FuelPerMile}}/mile &middot; {{dollars $s.FuelPerDay}}/day &middot; {{dollars $s.FuelPerMonth}}/month</span>
+  </div>
+  <div class="tile">
+    <span class="label">Maintenance</span>
+    <span class="value">{{money $s.ServiceCents}}</span>
+    <span class="note">{{cents $s.ServicePerMile}}/mile &middot; {{dollars $s.ServicePerDay}}/day &middot; {{dollars $s.ServicePerMonth}}/month</span>
+  </div>
+  <div class="tile accent">
+    <span class="label">Total running cost</span>
+    <span class="value">{{money $s.TotalCents}}</span>
+    <span class="note">{{cents $s.TotalPerMile}}/mile &middot; {{dollars $s.TotalPerDay}}/day &middot; {{dollars $s.TotalPerMonth}}/month</span>
+  </div>
+  {{if $s.SavedCents}}
+    <div class="tile good">
+      <span class="label">Fuel saver</span>
+      <span class="value">{{money $s.SavedCents}}</span>
+      <span class="note">{{share $s.SavedPercent}} off the pump price</span>
+    </div>
+  {{end}}
+  {{if $s.HasPurchase}}
+    <div class="tile">
+      <span class="label">Cost of ownership</span>
+      <span class="value">{{money $s.OwnershipCents}}</span>
+      <span class="note">{{money $s.PurchaseCents}} to buy{{if $s.SoldCents}}, {{money $s.SoldCents}} back{{end}} &middot; {{dollars $s.OwnershipPerMonth}}/month</span>
+    </div>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="head">
+    <h2>Miles per gallon</h2>
+    <span class="spacer"></span>
+    <p class="legend">
+      <span class="mpg"><i></i><span class="name">Each tank</span></span>
+      <span class="mpg-avg"><i></i><span class="name">Five-fill average</span></span>
+    </p>
+  </div>
+  {{template "chart" .MPGChart}}
+  <p class="small muted">
+    {{count $s.MeasuredFills}} of {{count $s.Fills}} fill-ups can carry an mpg figure. The rest are the first one,
+    which has nothing behind it to measure against, and any marked as a partial fill or as having a gap before them.
+  </p>
+</div>
+
+<div class="split">
+  <div class="card">
+    <div class="head">
+      <h2>What a gallon cost</h2>
+      <span class="spacer"></span>
+      <p class="legend">
+        <span class="paid"><i></i><span class="name">Paid</span></span>
+        {{if $s.SavedCents}}<span class="pump"><i></i><span class="name">Pump</span></span>{{end}}
+      </p>
+    </div>
+    {{template "chart" .PriceChart}}
+    <p class="small muted">
+      Cheapest {{money .Report.Records.Cheapest.PricePerGallonCents}} on {{day .Report.Records.Cheapest.On}},
+      dearest {{money .Report.Records.Dearest.PricePerGallonCents}} on {{day .Report.Records.Dearest.On}}.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>Cost a day, running</h2>
+      <span class="spacer"></span>
+      <p class="legend"><span class="cost"><i></i><span class="name">Fuel and maintenance</span></span></p>
+    </div>
+    {{template "chart" .CostChart}}
+    <p class="small muted">
+      Everything spent so far, divided by the days you have had it. It is meant to flatten out;
+      a step in it is a big invoice.
+    </p>
+  </div>
+</div>
+
+{{if $o.Ready}}
+  <div class="card">
+    <h2>If nothing changes</h2>
+    <div class="tiles" style="margin-bottom:0">
+      <div class="tile">
+        <span class="label">Next fill-up</span>
+        <span class="value small">{{if $o.NextFillOn}}{{day $o.NextFillOn}}{{else}}&mdash;{{end}}</span>
+        <span class="note">{{if $o.Overdue}}due already{{else if $o.NextFillOn}}in about {{days $o.NextFillDays}}{{end}}</span>
+      </div>
+      <div class="tile">
+        <span class="label">Odometer in a year</span>
+        <span class="value small">{{miles $o.OdometerInAYear}}</span>
+        <span class="note">{{miles $o.YearMiles}} miles a year</span>
+      </div>
+      <div class="tile">
+        <span class="label">Next twelve months</span>
+        <span class="value small">{{money $o.YearTotalCents}}</span>
+        <span class="note">{{money $o.YearFuelCents}} fuel, {{money $o.YearServiceCents}} shop</span>
+      </div>
+      {{if $shop.HasOil}}
+        <div class="tile {{if $shop.OilOverdue}}warn{{end}}">
+          <span class="label">Oil change</span>
+          <span class="value small">
+            {{if $shop.OilIntervalMiles}}
+              {{if $shop.OilOverdue}}Overdue{{else}}in {{miles $shop.OilDueIn}} mi{{end}}
+            {{else}}{{day $shop.LastOil.On}}{{end}}
+          </span>
+          <span class="note">last done {{day $shop.LastOil.On}} at {{miles $shop.LastOil.Odometer}}</span>
+        </div>
+      {{end}}
+    </div>
+    <p class="small muted" style="margin-top:14px">
+      Straight lines drawn through the last {{days $o.BasedOnDays}} of history. Nothing here is stored;
+      it is the recent past extended, and something always changes.
+    </p>
+  </div>
+{{end}}
+
+<div class="split">
+  <div class="card">
+    <div class="head">
+      <h2>Recent fill-ups</h2>
+      <span class="spacer"></span>
+      <a class="btn small" href="/vehicle/{{$v.Slug}}/fuel">All {{count $s.Fills}}</a>
+    </div>
+    {{$fills := reverseFills .Report.Fills}}
+    {{if $fills}}
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Where</th><th class="right">Odometer</th><th class="right">Gallons</th><th class="right">Cost</th><th class="right">MPG</th></tr>
+          </thead>
+          <tbody>
+            {{range $at, $fill := $fills}}{{if lt $at 8}}
+              <tr>
+                <td class="nowrap">{{day $fill.On}}</td>
+                <td>{{station $fill.Station}}</td>
+                <td class="num">{{miles $fill.Odometer}}</td>
+                <td class="num">{{gallons $fill.Gallons}}</td>
+                <td class="num">{{money $fill.CostCents}}</td>
+                <td class="num strong">{{if $fill.Measured}}{{mpg $fill.MPG}}{{else}}&mdash;{{end}}</td>
+              </tr>
+            {{end}}{{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <p class="muted">No fill-ups yet.</p>
+    {{end}}
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>Recent service</h2>
+      <span class="spacer"></span>
+      <a class="btn small" href="/vehicle/{{$v.Slug}}/service">All {{count $shop.Visits}}</a>
+    </div>
+    {{$visits := reverseServices .Report.Services}}
+    {{if $visits}}
+      <ul class="rows">
+        {{range $at, $visit := $visits}}{{if lt $at 5}}
+          <li>
+            <div>
+              <strong>{{$visit.Summary}}</strong>
+              <div class="small muted">{{day $visit.On}} &middot; {{station $visit.Shop}} &middot; {{miles $visit.Odometer}} miles</div>
+            </div>
+            <span class="spacer"></span>
+            <strong>{{money $visit.CostCents}}</strong>
+          </li>
+        {{end}}{{end}}
+      </ul>
+    {{else}}
+      <p class="muted">No shop visits logged yet.</p>
+    {{end}}
+  </div>
+</div>
+
+{{end}}
+{{end}}

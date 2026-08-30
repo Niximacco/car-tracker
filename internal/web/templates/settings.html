@@ -1,0 +1,157 @@
+{{define "content"}}
+{{$v := .Vehicle}}
+<div class="pagehead">
+  <div>
+    <h1>{{$v.Called}} &middot; settings</h1>
+    <p class="sub">What this vehicle is, who can see it, and when the clock started.</p>
+  </div>
+</div>
+
+{{template "carnav" .}}
+
+<div class="card">
+  <h2>The vehicle</h2>
+  <form method="post" action="/vehicle/{{$v.Slug}}/settings">
+    <div class="grid">
+      <div class="field">
+        <label for="name">Name <span class="hint">what the pages call it</span></label>
+        <input id="name" type="text" name="name" value="{{$v.Name}}" required>
+      </div>
+      <div class="field">
+        <label for="year">Year</label>
+        <input id="year" type="number" name="year" min="1900" max="2100" step="1" value="{{if $v.Year}}{{$v.Year}}{{end}}">
+      </div>
+      <div class="field">
+        <label for="make">Make</label>
+        <input id="make" type="text" name="make" value="{{$v.Make}}">
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <input id="model" type="text" name="model" value="{{$v.Model}}">
+      </div>
+      <div class="field">
+        <label for="trim">Trim</label>
+        <input id="trim" type="text" name="trim" value="{{$v.Trim}}">
+      </div>
+      <div class="field">
+        <label for="tank">Tank, gallons <span class="hint">only used to flag an impossible fill</span></label>
+        <input id="tank" type="number" name="tank" min="0" step="0.1" value="{{if $v.TankGallons}}{{gallons $v.TankGallons}}{{end}}">
+      </div>
+      <div class="field">
+        <label for="plate">Plate</label>
+        <input id="plate" type="text" name="plate" value="{{$v.Plate}}">
+      </div>
+      <div class="field">
+        <label for="vin">VIN</label>
+        <input id="vin" type="text" name="vin" value="{{$v.VIN}}">
+      </div>
+    </div>
+
+    <hr>
+
+    <h3>Where the clock started</h3>
+    <p class="small muted">
+      Total miles, cost a day and cost a month are all measured from these two. Without them the site can still
+      show you what the fuel cost; it cannot tell you what the car costs.
+    </p>
+    <div class="grid">
+      <div class="field">
+        <label for="purchased">Bought on</label>
+        <input id="purchased" type="date" name="purchased" value="{{$v.PurchasedOn}}">
+      </div>
+      <div class="field">
+        <label for="odometer">Odometer that day</label>
+        <input id="odometer" type="number" name="odometer" min="0" step="1" value="{{if $v.PurchaseOdometer}}{{$v.PurchaseOdometer}}{{end}}">
+      </div>
+      <div class="field">
+        <label for="price">What it cost <span class="hint">optional, for cost of ownership</span></label>
+        <input id="price" type="text" name="price" inputmode="decimal" value="{{moneyInput $v.PurchasePriceCents}}">
+      </div>
+    </div>
+
+    <hr>
+
+    <h3>Retiring it</h3>
+    <p class="small muted">
+      A retired vehicle keeps its whole history and stops counting days. That is the point: leaving it running
+      would go on quietly lowering the cost per day of a car nobody drives.
+    </p>
+    <div class="check">
+      <input id="retired" type="checkbox" name="retired" value="1" {{if $v.Retired}}checked{{end}}>
+      <label for="retired">I no longer have this vehicle</label>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label for="soldon">Sold on</label>
+        <input id="soldon" type="date" name="soldon" value="{{$v.SoldOn}}">
+      </div>
+      <div class="field">
+        <label for="soldodometer">Odometer that day</label>
+        <input id="soldodometer" type="number" name="soldodometer" min="0" step="1" value="{{if $v.SoldOdometer}}{{$v.SoldOdometer}}{{end}}">
+      </div>
+      <div class="field">
+        <label for="soldprice">What it fetched</label>
+        <input id="soldprice" type="text" name="soldprice" inputmode="decimal" value="{{moneyInput $v.SoldPriceCents}}">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-check" aria-hidden="true"></i>Save</button>
+      <a class="btn" href="/vehicle/{{$v.Slug}}">Back to the overview</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Who can see it</h2>
+  <p class="small muted">
+    Everybody here can log fill-ups and shop visits against this vehicle and read every figure on it. Only
+    <strong>{{accountName $v.Owner}}</strong>, who owns it, can change what it is or who else is on the list.
+  </p>
+
+  {{if $v.SharedWith}}
+    <ul class="rows">
+      {{range $v.SharedWith}}
+        <li>
+          <i class="ico fa-solid fa-user" aria-hidden="true"></i>
+          <span>{{.}}</span>
+          <span class="spacer"></span>
+          <form method="post" action="/vehicle/{{$v.Slug}}/share/remove"
+                data-confirm="Stop sharing {{$v.Called}} with {{.}}?">
+            <input type="hidden" name="email" value="{{.}}">
+            <button class="small" type="submit">Remove</button>
+          </form>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="muted">Nobody else can see this vehicle.</p>
+  {{end}}
+
+  <form method="post" action="/vehicle/{{$v.Slug}}/share" style="margin-top:16px">
+    <div class="field">
+      <label for="share">Share with an email address</label>
+      <input id="share" type="email" name="email" placeholder="them@example.com" required>
+      <p class="small muted" style="margin-top:6px">
+        They also need an account here before they can sign in and see it.
+        {{if .IsAdmin}}<a href="/users">Add one</a>.{{else}}An admin adds those.{{end}}
+      </p>
+    </div>
+    <div class="actions">
+      <button type="submit"><i class="ico fa-solid fa-user-plus" aria-hidden="true"></i>Share</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Deleting it</h2>
+  <p class="small muted">
+    This removes the vehicle and every fill-up and shop visit logged against it. There is no undo and no export
+    on the way out - take a copy from the fuel log first if you want one.
+  </p>
+  <form method="post" action="/vehicle/{{$v.Slug}}/delete"
+        data-confirm="Delete {{$v.Called}} and all {{count .Report.Summary.Fills}} fill-ups and {{count .Report.Shop.Visits}} shop visits? This cannot be undone.">
+    <button class="danger" type="submit"><i class="ico fa-solid fa-trash" aria-hidden="true"></i>Delete this vehicle</button>
+  </form>
+</div>
+{{end}}

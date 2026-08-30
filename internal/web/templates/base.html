@@ -1,0 +1,148 @@
+{{define "base"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
+<title>{{.Title}} &middot; {{.SiteName}}</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9A%97%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{.Stylesheet}}">
+{{if .FontAwesomeKit}}
+  <!-- The icons. Everything on these pages is labelled in words as well, so a
+       kit that is not configured, blocked, or simply slow leaves a site with
+       no icons on it rather than a site with holes in it. -->
+  <link rel="preconnect" href="https://kit.fontawesome.com" crossorigin>
+  <script src="https://kit.fontawesome.com/{{.FontAwesomeKit}}.js" crossorigin="anonymous" defer></script>
+{{end}}
+</head>
+<body class="{{if not .SignedIn}}centred{{end}}">
+{{if .SignedIn}}
+<div class="bar">
+  <nav>
+    <a class="brand" href="/">
+      <i class="ico fa-solid fa-gauge-high" aria-hidden="true"></i>{{.SiteName}}
+    </a>
+    <a href="/" class="tab {{if eq .Nav "garage"}}on{{end}}">
+      <i class="ico fa-solid fa-car-side" aria-hidden="true"></i>Garage
+    </a>
+    {{if not .ViewOnly}}
+      <a href="/vehicles/new" class="tab {{if eq .Nav "newcar"}}on{{end}}">
+        <i class="ico fa-solid fa-plus" aria-hidden="true"></i>Add a vehicle
+      </a>
+    {{end}}
+    {{if .IsAdmin}}
+      <a href="/users" class="tab {{if eq .Nav "users"}}on{{end}}">
+        <i class="ico fa-solid fa-user-shield" aria-hidden="true"></i>Access
+      </a>
+    {{end}}
+    <span class="spacer"></span>
+    <a href="/profile" class="who {{if eq .Nav "profile"}}on{{end}}" title="{{.Email}}">
+      <i class="ico fa-solid fa-circle-user" aria-hidden="true"></i>{{accountName .Email}}
+    </a>
+    <form method="post" action="/logout">
+      <button class="link" type="submit"><i class="ico fa-solid fa-right-from-bracket" aria-hidden="true"></i>Sign out</button>
+    </form>
+  </nav>
+</div>
+{{end}}
+
+<main>
+{{if .Error}}<div class="banner error" role="alert"><i class="ico fa-solid fa-circle-exclamation" aria-hidden="true"></i><span>{{.Error}}</span></div>{{end}}
+{{if .Notice}}<div class="banner ok"><i class="ico fa-solid fa-circle-check" aria-hidden="true"></i><span>{{.Notice}}</span></div>{{end}}
+{{if .Message}}<div class="banner info"><i class="ico fa-solid fa-circle-info" aria-hidden="true"></i><span>{{.Message}}</span></div>{{end}}
+{{template "content" .}}
+</main>
+
+{{if .SignedIn}}
+<!-- The same links again, along the bottom, for a phone. Only one of the two
+     is ever on screen: the css shows this one and hides the row in the nav
+     above it below the breakpoint, and hides this one above it. -->
+<div class="tabbar">
+  <a href="/" class="{{if eq .Nav "garage"}}on{{end}}">
+    <i class="ico fa-solid fa-car-side" aria-hidden="true"></i>Garage
+  </a>
+  {{if not .ViewOnly}}
+    <a href="/vehicles/new" class="{{if eq .Nav "newcar"}}on{{end}}">
+      <i class="ico fa-solid fa-plus" aria-hidden="true"></i>Add
+    </a>
+  {{end}}
+  {{if .IsAdmin}}
+    <a href="/users" class="{{if eq .Nav "users"}}on{{end}}">
+      <i class="ico fa-solid fa-user-shield" aria-hidden="true"></i>Access
+    </a>
+  {{end}}
+  <a href="/profile" class="{{if eq .Nav "profile"}}on{{end}}">
+    <i class="ico fa-solid fa-circle-user" aria-hidden="true"></i>You
+  </a>
+</div>
+{{end}}
+
+<script>
+  // Every write on this site is an ordinary form post that redirects, so there
+  // is no api to talk to and nothing here that a page needs in order to work.
+  // This is the two places where a click deserves a second thought.
+
+  // Anything that deletes says what it is about to delete and waits for an
+  // answer. The message is on the button rather than in here, because the
+  // thing worth confirming is which entry, not that a deletion is a deletion.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    var ask = form.getAttribute("data-confirm");
+
+    if (ask && !window.confirm(ask)) {
+      event.preventDefault();
+      return;
+    }
+
+    // A double submit on a slow connection is a duplicate entry, and on this
+    // site a duplicate entry is a fill-up that never happened.
+    var button = form.querySelector("button[type=submit]");
+    if (button) {
+      setTimeout(function () { button.disabled = true; }, 0);
+    }
+  });
+</script>
+</body>
+</html>{{end}}
+
+{{/* carnav is one car's own row of pages. It is defined here, beside the site
+     nav, because six templates draw it and a second copy is a copy that drifts. */}}
+{{define "carnav"}}
+<div class="tabs">
+  <a href="/vehicle/{{.Vehicle.Slug}}" class="{{if eq .Nav "dash"}}on{{end}}"><i class="ico fa-solid fa-gauge-high" aria-hidden="true"></i>Overview</a>
+  <a href="/vehicle/{{.Vehicle.Slug}}/fuel" class="{{if eq .Nav "fuel"}}on{{end}}"><i class="ico fa-solid fa-gas-pump" aria-hidden="true"></i>Fuel log</a>
+  <a href="/vehicle/{{.Vehicle.Slug}}/service" class="{{if eq .Nav "service"}}on{{end}}"><i class="ico fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>Service</a>
+  <a href="/vehicle/{{.Vehicle.Slug}}/insights" class="{{if eq .Nav "insights"}}on{{end}}"><i class="ico fa-solid fa-chart-line" aria-hidden="true"></i>Insights</a>
+  {{if .CanManage}}
+    <a href="/vehicle/{{.Vehicle.Slug}}/import" class="{{if eq .Nav "import"}}on{{end}}"><i class="ico fa-solid fa-file-import" aria-hidden="true"></i>Import</a>
+    <a href="/vehicle/{{.Vehicle.Slug}}/settings" class="{{if eq .Nav "settings"}}on{{end}}"><i class="ico fa-solid fa-sliders" aria-hidden="true"></i>Settings</a>
+  {{end}}
+</div>
+{{end}}
+
+{{/* chart draws one picture. Everything about where a line goes was worked out
+     in the chart package; this only writes it down. */}}
+{{define "chart"}}
+{{if not .Empty}}
+<div class="chart">
+  <svg viewBox="{{.ViewBox}}" role="img">
+    {{$left := .Left}}{{$right := .Right}}{{$labelX := .LabelX}}{{$labelY := .LabelY}}
+    {{range .YTicks}}
+      <line class="grid" x1="{{$left}}" y1="{{.At}}" x2="{{$right}}" y2="{{.At}}"></line>
+      <text class="axis y" x="{{$labelX}}" y="{{.Text}}">{{.Label}}</text>
+    {{end}}
+    {{range .XTicks}}
+      <text class="axis x" x="{{.At}}" y="{{$labelY}}">{{.Label}}</text>
+    {{end}}
+    {{range .Lines}}
+      <path class="{{.Class}}{{if .Dashed}} dashed{{end}}" d="{{.Path}}"></path>
+    {{end}}
+    {{range .Lines}}{{$class := .Class}}{{range .Points}}
+      <circle class="{{$class}}" cx="{{.X}}" cy="{{.Y}}"><title>{{.Detail}}</title></circle>
+    {{end}}{{end}}
+  </svg>
+</div>
+{{end}}
+{{end}}

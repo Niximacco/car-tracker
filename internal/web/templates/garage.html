@@ -1,0 +1,57 @@
+{{define "content"}}
+<div class="pagehead">
+  <div>
+    <h1>The garage</h1>
+    <p class="sub">Every vehicle you own or have been shared on.</p>
+  </div>
+  <span class="spacer"></span>
+  {{if not .ViewOnly}}
+    <a class="btn primary" href="/vehicles/new"><i class="ico fa-solid fa-plus" aria-hidden="true"></i>Add a vehicle</a>
+  {{end}}
+</div>
+
+{{if .Cards}}
+  <div class="cars">
+    {{range .Cards}}
+      <a class="car" href="/vehicle/{{.Vehicle.Slug}}">
+        <h2>{{.Vehicle.Called}}</h2>
+        <p class="desc">
+          {{with .Vehicle.Described}}{{.}}{{else}}No make or model set{{end}}
+          {{if .Shared}}<span class="pill quiet">{{accountName .Vehicle.Owner}}'s</span>{{end}}
+          {{if .Vehicle.Retired}}<span class="pill quiet">Retired</span>{{end}}
+        </p>
+        <dl>
+          <div>
+            <dt>Odometer</dt>
+            <dd>{{if .Summary.LatestOdometer}}{{miles .Summary.LatestOdometer}}{{else}}&mdash;{{end}}</dd>
+          </div>
+          <div>
+            <dt>Miles per gallon</dt>
+            <dd>{{mpg .Summary.MeasuredMPG}}</dd>
+          </div>
+          <div>
+            <dt>Cost a mile</dt>
+            <dd>{{cents .Summary.TotalPerMile}}</dd>
+          </div>
+          <div>
+            <dt>Cost a month</dt>
+            <dd>{{dollars .Summary.TotalPerMonth}}</dd>
+          </div>
+        </dl>
+        <p class="small muted" style="margin-top:14px">
+          {{if .LastOn}}Last entry {{ago .LastOn}}{{else}}Nothing logged yet{{end}}
+          &middot; {{count .Summary.Fills}} fill-ups
+        </p>
+      </a>
+    {{end}}
+  </div>
+{{else}}
+  <div class="empty">
+    <h2>Nothing in the garage yet</h2>
+    <p>Add a vehicle and the fuel log, the service history and every figure that comes out of them start here.</p>
+    {{if not .ViewOnly}}
+      <p style="margin-top:18px"><a class="btn primary" href="/vehicles/new"><i class="ico fa-solid fa-plus" aria-hidden="true"></i>Add your first vehicle</a></p>
+    {{end}}
+  </div>
+{{end}}
+{{end}}

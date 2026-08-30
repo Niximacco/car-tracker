@@ -1,0 +1,19 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/car-tracker
+
+# Test binary and coverage output
+*.test
+*.out
+
+# Local environment
+.env
+.gotmp/
+
+# Editors
+.idea/
+.vscode/

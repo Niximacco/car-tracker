@@ -1,0 +1,171 @@
+{{define "content"}}
+{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$can := not .ViewOnly}}
+<div class="pagehead">
+  <div>
+    <h1>{{$v.Called}} &middot; fuel log</h1>
+    <p class="sub">
+      {{count $s.Fills}} fill-ups, {{gallons $s.TotalGallons}} gallons, {{money $s.FuelCents}}
+      {{if $s.FirstOn}}&middot; {{day $s.FirstOn}} to {{day $s.LastOn}}{{end}}
+    </p>
+  </div>
+  <span class="spacer"></span>
+  {{if $can}}<a class="btn primary" href="#add"><i class="ico fa-solid fa-plus" aria-hidden="true"></i>Log a fill-up</a>{{end}}
+</div>
+
+{{template "carnav" .}}
+
+{{if .Report.Fills}}
+  <div class="card">
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Where</th>
+            <th class="right">Odometer</th>
+            <th class="right">Miles</th>
+            <th class="right">Gallons</th>
+            <th class="right">$/gal</th>
+            <th class="right">Saver</th>
+            <th class="right">Cost</th>
+            <th class="right">MPG</th>
+            <th class="right">Running</th>
+            <th class="right">Days</th>
+            <th class="right">$/day</th>
+            {{if $can}}<th></th>{{end}}
+          </tr>
+        </thead>
+        <tbody>
+          {{range reverseFills .Report.Fills}}
+            <tr {{if .Suspect $v.TankGallons}}class="odd"{{end}}>
+              <td class="nowrap">
+                {{day .On}}
+                {{with clock .At}}<div class="small faint">{{.}}</div>{{end}}
+              </td>
+              <td>
+                {{station .Station}}
+                {{if .Partial}}<span class="pill quiet">partial</span>{{end}}
+                {{if .Missed}}<span class="pill quiet">gap before</span>{{end}}
+                {{with .Note}}<div class="small muted">{{.}}</div>{{end}}
+              </td>
+              <td class="num">{{miles .Odometer}}</td>
+              <td class="num">{{if .Miles}}{{miles .Miles}}{{else}}&mdash;{{end}}</td>
+              <td class="num">{{gallons .Gallons}}</td>
+              <td class="num">{{money .PricePerGallonCents}}</td>
+              <td class="num">{{moneyBlank .FuelSaverCents}}</td>
+              <td class="num">{{money .CostCents}}</td>
+              <td class="num strong">{{if .Measured}}{{mpg .MPG}}{{else}}&mdash;{{end}}</td>
+              <td class="num">{{money .RunningCents}}</td>
+              <td class="num">{{if .DaysOwned}}{{count .DaysOwned}}{{else}}&mdash;{{end}}</td>
+              <td class="num">{{if .CostPerDayCents}}{{dollars .CostPerDayCents}}{{else}}&mdash;{{end}}</td>
+              {{if $can}}
+                <td class="nowrap">
+                  <a class="btn small" href="/vehicle/{{$v.Slug}}/fuel?edit={{.ID}}#add">Edit</a>
+                </td>
+              {{end}}
+            </tr>
+          {{end}}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4">{{count $s.Fills}} fill-ups</td>
+            <td class="num">{{gallons $s.TotalGallons}}</td>
+            <td class="num">{{dollars $s.AvgPriceCents}}</td>
+            <td class="num">{{moneyBlank $s.SavedCents}}</td>
+            <td class="num">{{money $s.FuelCents}}</td>
+            <td class="num">{{mpg $s.MeasuredMPG}}</td>
+            <td colspan="{{if $can}}4{{else}}3{{end}}"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="small muted" style="margin-top:14px">
+      <strong>Miles</strong> and <strong>MPG</strong> are measured against the fill-up before, so the oldest row has
+      neither. <strong>$/gal</strong> is what was actually paid; the saver column is what came off the pump price.
+      <strong>Running</strong> is everything spent on this car up to that day, fuel and shop together, and
+      <strong>$/day</strong> is that divided by the days you had owned it. A shaded row is one worth a second look.
+    </p>
+  </div>
+{{end}}
+
+{{if $can}}
+<div class="card" id="add">
+  <h2>{{if .Editing}}Edit this fill-up{{else}}Log a fill-up{{end}}</h2>
+  <form method="post" action="/vehicle/{{$v.Slug}}/fuel">
+    <input type="hidden" name="editing" value="{{.Editing}}">
+    <div class="grid">
+      <div class="field">
+        <label for="on">Date</label>
+        <input id="on" type="date" name="on" value="{{.Fillup.On}}" required>
+      </div>
+      <div class="field">
+        <label for="at">Time <span class="hint">optional</span></label>
+        <input id="at" type="time" name="at" value="{{.Fillup.At}}">
+      </div>
+      <div class="field">
+        <label for="odometer">Odometer</label>
+        <input id="odometer" type="number" name="odometer" min="0" step="1" inputmode="numeric"
+               value="{{if .Fillup.Odometer}}{{.Fillup.Odometer}}{{end}}" required>
+      </div>
+      <div class="field">
+        <label for="gallons">Gallons</label>
+        <input id="gallons" type="number" name="gallons" min="0" step="0.001" inputmode="decimal"
+               value="{{if .Fillup.Gallons}}{{gallons .Fillup.Gallons}}{{end}}" required>
+      </div>
+      <div class="field">
+        <label for="price">Price a gallon <span class="hint">what you actually paid</span></label>
+        <input id="price" type="text" name="price" inputmode="decimal" placeholder="3.29"
+               value="{{moneyInput .Fillup.PricePerGallonCents}}" required>
+      </div>
+      <div class="field">
+        <label for="saver">Fuel saver a gallon <span class="hint">what came off the sign price</span></label>
+        <input id="saver" type="text" name="saver" inputmode="decimal" placeholder="0.00"
+               value="{{moneyInput .Fillup.FuelSaverCents}}">
+      </div>
+      <div class="field">
+        <label for="station">Where</label>
+        <input id="station" type="text" name="station" value="{{.Fillup.Station}}" placeholder="Hy-Vee New Hope" list="stations">
+        <datalist id="stations">
+          {{range .Report.Stations}}<option value="{{.Name}}"></option>{{end}}
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="cost">Total <span class="hint">only if it isn't gallons &times; price</span></label>
+        <input id="cost" type="text" name="cost" inputmode="decimal" placeholder="worked out"
+               value="{{moneyInput .Fillup.CostCents}}">
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:14px">
+      <label for="note">Note <span class="hint">optional</span></label>
+      <input id="note" type="text" name="note" value="{{.Fillup.Note}}" placeholder="Anything that would explain an odd figure later">
+    </div>
+
+    <div class="check">
+      <input id="partial" type="checkbox" name="partial" value="1" {{if .Fillup.Partial}}checked{{end}}>
+      <label for="partial">Partial fill &mdash; I didn't fill the tank. The gallons and the cost still count; no mpg is worked out from it.</label>
+    </div>
+    <div class="check">
+      <input id="missed" type="checkbox" name="missed" value="1" {{if .Fillup.Missed}}checked{{end}}>
+      <label for="missed">There is a fill-up missing before this one. Same again: the miles are real, the mpg would not be.</label>
+    </div>
+
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-check" aria-hidden="true"></i>{{if .Editing}}Save changes{{else}}Log it{{end}}</button>
+      {{if .Editing}}<a class="btn" href="/vehicle/{{$v.Slug}}/fuel">Cancel</a>{{end}}
+    </div>
+  </form>
+
+  {{if .Editing}}
+    <!-- Its own form rather than a second button on the one above, so that the
+         "are you sure" belongs to the deletion and the browser does not insist
+         on a valid date before it will let you throw the row away. -->
+    <form method="post" action="/vehicle/{{$v.Slug}}/fuel/delete" style="margin-top:14px"
+          data-confirm="Delete the fill-up on {{day .Fillup.On}} at {{miles .Fillup.Odometer}} miles? This cannot be undone.">
+      <input type="hidden" name="id" value="{{.Editing}}">
+      <button class="danger small" type="submit"><i class="ico fa-solid fa-trash" aria-hidden="true"></i>Delete this fill-up</button>
+    </form>
+  {{end}}
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,290 @@
+{{define "content"}}
+{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$r := .Report.Records}}
+<div class="pagehead">
+  <div>
+    <h1>{{$v.Called}} &middot; insights</h1>
+    <p class="sub">Everything the log knows that the log does not say out loud.</p>
+  </div>
+</div>
+
+{{template "carnav" .}}
+
+{{if not .Report.Fills}}
+  <div class="empty">
+    <h2>Nothing to work out yet</h2>
+    <p>Two fill-ups is the least this page needs. One tank has nothing to be measured against.</p>
+  </div>
+{{else}}
+
+<!-- --------------------------------------------------------------- years -->
+<div class="card">
+  <h2>Year by year</h2>
+  <p class="small muted">
+    Miles and mpg count only the tanks that can carry them. Money counts every gallon and every invoice,
+    because you paid for all of them.
+  </p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th class="right">Fills</th>
+          <th class="right">Miles</th>
+          <th class="right">Gallons</th>
+          <th class="right">MPG</th>
+          <th class="right">$/gal</th>
+          <th class="right">Fuel</th>
+          <th class="right">Shop</th>
+          <th class="right">Saved</th>
+          <th class="right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{$widest := .WidestYear}}
+        {{range .Report.Years}}
+          <tr>
+            <td class="strong">{{.Year}}</td>
+            <td class="num">{{count .Fills}}</td>
+            <td class="num">{{miles .Miles}}</td>
+            <td class="num">{{gallons .Gallons}}</td>
+            <td class="num strong">{{mpg .MPG}}</td>
+            <td class="num">{{dollars .AvgPriceCents}}</td>
+            <td class="num">{{money .FuelCents}}</td>
+            <td class="num">{{moneyBlank .ServiceCents}}</td>
+            <td class="num">{{moneyBlank .SavedCents}}</td>
+            <td class="num barcell right">
+              <span class="fill" style="width:{{bar .TotalCentsFloat $widest}}%"></span>
+              <span class="strong">{{money .TotalCents}}</span>
+            </td>
+          </tr>
+        {{end}}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>All</td>
+          <td class="num">{{count $s.Fills}}</td>
+          <td class="num">{{miles $s.MeasuredMiles}}</td>
+          <td class="num">{{gallons $s.TotalGallons}}</td>
+          <td class="num">{{mpg $s.MeasuredMPG}}</td>
+          <td class="num">{{dollars $s.AvgPriceCents}}</td>
+          <td class="num">{{money $s.FuelCents}}</td>
+          <td class="num">{{moneyBlank $s.ServiceCents}}</td>
+          <td class="num">{{moneyBlank $s.SavedCents}}</td>
+          <td class="num">{{money $s.TotalCents}}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- --------------------------------------------------------- seasonality -->
+<div class="card">
+  <div class="head">
+    <h2>The weather</h2>
+    <span class="spacer"></span>
+    {{if $r.SeasonalGap}}
+      <span class="pill {{if gt $r.SeasonalGap 0.0}}accent{{else}}quiet{{end}}">
+        Summer runs {{percent $r.SeasonalGap}} against winter
+      </span>
+    {{end}}
+  </div>
+  <p class="small muted">
+    A cold engine spends longer warming up and a cold tank of fuel does less work. Six months against six months,
+    split in April and October rather than at the solstice, because that is where the figure actually moves.
+  </p>
+
+  <div class="tiles">
+    <div class="tile good">
+      <span class="label">April to September</span>
+      <span class="value">{{mpg $r.SummerMPG}}</span>
+      <span class="note">{{count $r.SummerFills}} measured tanks</span>
+    </div>
+    <div class="tile">
+      <span class="label">October to March</span>
+      <span class="value">{{mpg $r.WinterMPG}}</span>
+      <span class="note">{{count $r.WinterFills}} measured tanks</span>
+    </div>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Month</th><th class="right">Fills</th><th class="right">Gallons</th><th class="right">$/gal</th><th class="right">MPG</th></tr>
+      </thead>
+      <tbody>
+        {{$widest := .WidestMonth}}
+        {{range .Report.Seasons}}
+          {{if .Fills}}
+            <tr>
+              <td>{{monthName .Month}}</td>
+              <td class="num">{{count .Fills}}</td>
+              <td class="num">{{gallons .Gallons}}</td>
+              <td class="num">{{dollars .AvgPriceCents}}</td>
+              <td class="num barcell right">
+                <span class="fill warm" style="width:{{bar .MPG $widest}}%"></span>
+                <span class="strong">{{mpg .MPG}}</span>
+              </td>
+            </tr>
+          {{end}}
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ stations -->
+<div class="card">
+  <h2>Where you buy fuel</h2>
+  <p class="small muted">
+    The price column is exactly what it looks like. The mpg column mostly is not - it says more about the roads
+    you are on when you stop somewhere than about what came out of the hose.
+  </p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Station</th>
+          <th class="right">Fills</th>
+          <th class="right">Share</th>
+          <th class="right">Gallons</th>
+          <th class="right">Paid</th>
+          <th class="right">Pump</th>
+          <th class="right">Saved</th>
+          <th class="right">MPG</th>
+          <th>Last</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{$widest := .WidestStation}}
+        {{range .Report.Stations}}
+          <tr>
+            <td class="strong">{{.Name}}</td>
+            <td class="num barcell right">
+              <span class="fill" style="width:{{bar .FillsFloat $widest}}%"></span>
+              <span>{{count .Fills}}</span>
+            </td>
+            <td class="num">{{share .Share}}</td>
+            <td class="num">{{gallons .Gallons}}</td>
+            <td class="num">{{dollars .AvgPriceCents}}</td>
+            <td class="num">{{dollars .AvgPumpCents}}</td>
+            <td class="num">{{moneyBlank .SavedCents}}</td>
+            <td class="num">{{mpg .MPG}}</td>
+            <td class="nowrap small muted">{{day .LastOn}}</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------- records -->
+<div class="card">
+  <h2>Extremes, and what they are extreme against</h2>
+  <div class="tiles">
+    <div class="tile good">
+      <span class="label">Best tank</span>
+      <span class="value">{{mpg $r.Best.MPG}}</span>
+      <span class="note">{{day $r.Best.On}} &middot; {{miles $r.Best.Miles}} miles on {{gallons $r.Best.Gallons}}</span>
+    </div>
+    <div class="tile warn">
+      <span class="label">Worst tank</span>
+      <span class="value">{{mpg $r.Worst.MPG}}</span>
+      <span class="note">{{day $r.Worst.On}} &middot; {{miles $r.Worst.Miles}} miles on {{gallons $r.Worst.Gallons}}</span>
+    </div>
+    <div class="tile">
+      <span class="label">Furthest on one tank</span>
+      <span class="value">{{miles $r.Longest.Miles}}</span>
+      <span class="note">{{day $r.Longest.On}} &middot; {{mpg $r.Longest.MPG}} mpg</span>
+    </div>
+    <div class="tile">
+      <span class="label">Longest a tank lasted</span>
+      <span class="value">{{count $r.Slowest.Days}}</span>
+      <span class="note">days &middot; ending {{day $r.Slowest.On}}</span>
+    </div>
+    <div class="tile">
+      <span class="label">Biggest fill</span>
+      <span class="value">{{gallons $r.Biggest.Gallons}}</span>
+      <span class="note">{{day $r.Biggest.On}}{{if $v.TankGallons}} &middot; tank is {{gallons $v.TankGallons}}{{end}}</span>
+    </div>
+    <div class="tile">
+      <span class="label">Cheapest gallon</span>
+      <span class="value">{{money $r.Cheapest.PricePerGallonCents}}</span>
+      <span class="note">{{day $r.Cheapest.On}} at {{station $r.Cheapest.Station}}</span>
+    </div>
+    <div class="tile">
+      <span class="label">Dearest gallon</span>
+      <span class="value">{{money $r.Dearest.PricePerGallonCents}}</span>
+      <span class="note">{{day $r.Dearest.On}} at {{station $r.Dearest.Station}}</span>
+    </div>
+  </div>
+
+  <div class="tiles" style="margin-bottom:0">
+    <div class="tile">
+      <span class="label">Usual gap</span>
+      <span class="value">{{one $r.AvgDaysBetween}}</span>
+      <span class="note">days between fill-ups</span>
+    </div>
+    <div class="tile">
+      <span class="label">Usual distance</span>
+      <span class="value">{{one $r.AvgMilesBetween}}</span>
+      <span class="note">miles between fill-ups</span>
+    </div>
+    <div class="tile">
+      <span class="label">Usual fill</span>
+      <span class="value">{{one $r.AvgGallons}}</span>
+      <span class="note">gallons, {{dollars $r.AvgFillCents}} a time</span>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------------------------------------------------- fuel saver -->
+{{if $s.SavedCents}}
+  <div class="card">
+    <div class="head">
+      <h2>What the discount was worth</h2>
+      <span class="spacer"></span>
+      <span class="pill good">{{money $s.SavedCents}} back</span>
+    </div>
+    <p class="small muted">
+      What you have paid against what the sign said, over the whole history. The average is across every gallon;
+      the per-gallon figure beside it is across only the gallons a discount was actually used on.
+    </p>
+    <div class="tiles">
+      <div class="tile good">
+        <span class="label">Saved</span>
+        <span class="value">{{money $s.SavedCents}}</span>
+        <span class="note">{{share $s.SavedPercent}} of what it would have cost</span>
+      </div>
+      <div class="tile">
+        <span class="label">Paid a gallon</span>
+        <span class="value">{{dollars $s.AvgPriceCents}}</span>
+        <span class="note">against {{dollars $s.AvgPumpCents}} at the pump</span>
+      </div>
+      <div class="tile">
+        <span class="label">When it applied</span>
+        <span class="value">{{dollars $s.SavedPerGallon}}</span>
+        <span class="note">off a gallon, on the fills that used it</span>
+      </div>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Year</th><th class="right">Saved</th><th class="right">Paid for fuel</th><th class="right">Would have been</th></tr></thead>
+        <tbody>
+          {{range .Report.Years}}
+            {{if .SavedCents}}
+              <tr>
+                <td class="strong">{{.Year}}</td>
+                <td class="num strong">{{money .SavedCents}}</td>
+                <td class="num">{{money .FuelCents}}</td>
+                <td class="num muted">{{money .PumpCents}}</td>
+              </tr>
+            {{end}}
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{{end}}
+
+{{end}}
+{{end}}

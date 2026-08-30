@@ -1,0 +1,139 @@
+{{define "content"}}
+{{$v := .Vehicle}}
+<div class="pagehead">
+  <div>
+    <h1>{{$v.Called}} &middot; import</h1>
+    <p class="sub">Bring a spreadsheet in. Nothing is written until you have looked at it.</p>
+  </div>
+</div>
+
+{{template "carnav" .}}
+
+{{if .Added}}
+  <div class="banner ok">
+    <i class="ico fa-solid fa-circle-check" aria-hidden="true"></i>
+    <span>{{count .Added}} new entries and {{count .Updated}} already here. <a href="/vehicle/{{$v.Slug}}">See the overview</a>.</span>
+  </div>
+{{end}}
+
+{{if .Preview.Rows}}
+  <!-- The confirm step. What is on screen is exactly what would be written, and
+       the form below carries the same text back so nothing is re-read
+       differently between looking at it and agreeing to it. -->
+  <div class="card">
+    <div class="head">
+      <h2>{{if .Seeded}}The spreadsheet, read{{else}}What this would import{{end}}</h2>
+      <span class="spacer"></span>
+      <span class="pill accent">{{count .Preview.Fillups}} fill-ups</span>
+      <span class="pill accent">{{count .Preview.Services}} shop visits</span>
+      {{if .Preview.Odd}}<span class="pill warn">{{count .Preview.Odd}} worth a look</span>{{end}}
+      {{if .Preview.Bad}}<span class="pill bad">{{count .Preview.Bad}} unreadable</span>{{end}}
+    </div>
+
+    <p class="small muted">
+      Every entry is stored under its date and its odometer reading, so importing the same rows again updates
+      them rather than doubling them. A shaded row read perfectly and is still worth checking; a red one will
+      not be imported at all.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="right">Line</th>
+            <th>Date</th>
+            <th>What</th>
+            <th class="right">Odometer</th>
+            <th class="right">Gallons</th>
+            <th class="right">$/gal</th>
+            <th class="right">Cost</th>
+            <th>Where</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Preview.Rows}}
+            <tr class="{{if not .Readable}}bad{{else if .Odd}}odd{{end}}">
+              <td class="num faint">{{.Line}}</td>
+              {{if not .Readable}}
+                <td colspan="7">
+                  <strong>{{.Problem}}</strong>
+                  <span class="raw">{{.Raw}}</span>
+                </td>
+              {{else if eq .Kind "fillup"}}
+                <td class="nowrap">{{day .Fillup.On}}</td>
+                <td>Fill-up{{if .Odd}}<span class="rowmark" title="{{.Odd}}">&#9888; {{.Odd}}</span>{{end}}</td>
+                <td class="num">{{miles .Fillup.Odometer}}</td>
+                <td class="num">{{gallons .Fillup.Gallons}}</td>
+                <td class="num">{{money .Fillup.PricePerGallonCents}}</td>
+                <td class="num">{{money .Fillup.Cost}}</td>
+                <td>{{station .Fillup.Station}}</td>
+              {{else}}
+                <td class="nowrap">{{day .Service.On}}</td>
+                <td>
+                  {{.Service.Summary}}
+                  {{if .Odd}}<span class="rowmark" title="{{.Odd}}">&#9888; {{.Odd}}</span>{{end}}
+                </td>
+                <td class="num">{{miles .Service.Odometer}}</td>
+                <td class="num">&mdash;</td>
+                <td class="num">&mdash;</td>
+                <td class="num">{{money .Service.CostCents}}</td>
+                <td>{{station .Service.Shop}}</td>
+              {{end}}
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if .Preview.Any}}
+      <form method="post" action="/vehicle/{{$v.Slug}}/import/confirm" style="margin-top:18px">
+        <input type="hidden" name="seeded" value="{{if .Seeded}}1{{end}}">
+        <textarea name="pasted" hidden>{{.Pasted}}</textarea>
+        <div class="actions" style="margin-top:0">
+          <button class="primary" type="submit">
+            <i class="ico fa-solid fa-file-import" aria-hidden="true"></i>Import {{count .Preview.Fillups}} fill-ups and {{count .Preview.Services}} visits
+          </button>
+          <a class="btn" href="/vehicle/{{$v.Slug}}/import">Start again</a>
+        </div>
+      </form>
+    {{end}}
+  </div>
+{{end}}
+
+<div class="card">
+  <h2>Paste a spreadsheet</h2>
+  <p class="small muted">
+    Download the sheet as csv, or select the cells and copy them. The first line has to be the column headings.
+    It needs a date column and an odometer column; from there, a row with gallons on it is a fill-up and a row
+    with work on it is a visit to the shop. Columns it does not recognise - the mpg, the running total, anything
+    this site works out for itself - are ignored rather than complained about.
+  </p>
+  <form method="post" action="/vehicle/{{$v.Slug}}/import">
+    <div class="field">
+      <label for="pasted">The rows</label>
+      <textarea id="pasted" class="paste" name="pasted" placeholder="Date&#9;Note / Location&#9;Odometer&#9;Gallons Purchased&#9;Price per Gallon&#9;Fuel Saver">{{.Pasted}}</textarea>
+    </div>
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-eye" aria-hidden="true"></i>Read it</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>The original spreadsheet</h2>
+  <p class="small muted">
+    Four years of the Google Sheet this site replaces - {{count .SeedFillups}} fill-ups and
+    {{count .SeedServices}} shop visits - are compiled into this service, so the very first import does not
+    need an export at all. It goes through the same reader a paste does, and lands on the same confirm screen.
+  </p>
+  <p class="small muted">
+    It is safe to run more than once: each entry is stored under its date and reading, so a second run writes
+    over the same rows.
+  </p>
+  <form method="post" action="/vehicle/{{$v.Slug}}/import/seed">
+    <div class="actions" style="margin-top:0">
+      <button type="submit"><i class="ico fa-solid fa-box-archive" aria-hidden="true"></i>Read the built-in history</button>
+    </div>
+  </form>
+</div>
+{{end}}

@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+{{if .SignedIn}}
+  <div class="actions">
+    <form method="get" action="/"><button class="primary" type="submit"><i class="ico fa-solid fa-car-side" aria-hidden="true"></i>Back to the garage</button></form>
+  </div>
+{{else}}
+  <div class="actions">
+    <form method="get" action="/login"><button class="primary" type="submit"><i class="ico fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>Back to sign in</button></form>
+  </div>
+{{end}}
+{{end}}

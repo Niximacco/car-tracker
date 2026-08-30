@@ -1,0 +1,166 @@
+{{define "content"}}
+{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$shop := .Report.Shop}}{{$can := not .ViewOnly}}
+<div class="pagehead">
+  <div>
+    <h1>{{$v.Called}} &middot; service history</h1>
+    <p class="sub">{{count $shop.Visits}} visits, {{money $shop.TotalCents}}{{if $shop.Visits}}, {{money $shop.AvgCents}} a visit{{end}}</p>
+  </div>
+  <span class="spacer"></span>
+  {{if $can}}<a class="btn primary" href="#add"><i class="ico fa-solid fa-plus" aria-hidden="true"></i>Log a service</a>{{end}}
+</div>
+
+{{template "carnav" .}}
+
+{{if $shop.Visits}}
+  <div class="tiles">
+    <div class="tile">
+      <span class="label">Spent at the shop</span>
+      <span class="value">{{money $shop.TotalCents}}</span>
+      <span class="note">{{cents $s.ServicePerMile}} a mile</span>
+    </div>
+    <div class="tile">
+      <span class="label">Usual gap</span>
+      <span class="value">{{if $shop.AvgMilesBetween}}{{one $shop.AvgMilesBetween}}{{else}}&mdash;{{end}}</span>
+      <span class="note">miles between visits{{if $shop.AvgDaysBetween}}, about {{one $shop.AvgDaysBetween}} days{{end}}</span>
+    </div>
+    {{if $shop.HasOil}}
+      <div class="tile {{if $shop.OilOverdue}}warn{{end}}">
+        <span class="label">Since the last oil change</span>
+        <span class="value">{{miles $shop.MilesSinceOil}}</span>
+        <span class="note">
+          {{if $shop.OilIntervalMiles}}usually every {{miles $shop.OilIntervalMiles}} &middot;
+            {{if $shop.OilOverdue}}overdue{{else}}{{miles $shop.OilDueIn}} to go{{end}}
+          {{else}}no interval yet - one more change and there will be{{end}}
+        </span>
+      </div>
+    {{end}}
+    <div class="tile">
+      <span class="label">Dearest single visit</span>
+      <span class="value">{{money .Report.Records.BiggestService.CostCents}}</span>
+      <span class="note">{{day .Report.Records.BiggestService.On}}</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Shop</th>
+            <th class="right">Odometer</th>
+            <th>Work done</th>
+            <th class="right">Cost</th>
+            {{if $can}}<th></th>{{end}}
+          </tr>
+        </thead>
+        <tbody>
+          {{range reverseServices .Report.Services}}
+            <tr>
+              <td class="nowrap">{{day .On}}<div class="small faint">{{ago .On}}</div></td>
+              <td>{{station .Shop}}</td>
+              <td class="num">{{miles .Odometer}}</td>
+              <td>
+                <ul class="work">{{range lines .Work}}<li>{{.}}</li>{{end}}</ul>
+                {{with .Note}}<div class="small muted">{{.}}</div>{{end}}
+              </td>
+              <td class="num strong">{{money .CostCents}}</td>
+              {{if $can}}
+                <td class="nowrap"><a class="btn small" href="/vehicle/{{$v.Slug}}/service?edit={{.ID}}#add">Edit</a></td>
+              {{end}}
+            </tr>
+          {{end}}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4">{{count $shop.Visits}} visits</td>
+            <td class="num">{{money $shop.TotalCents}}</td>
+            {{if $can}}<td></td>{{end}}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {{if gt (len $shop.Shops) 1}}
+    <div class="card">
+      <h2>Where the work was done</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Shop</th><th class="right">Visits</th><th class="right">Spent</th><th>Last</th></tr></thead>
+          <tbody>
+            {{range $shop.Shops}}
+              <tr>
+                <td>{{.Name}}</td>
+                <td class="num">{{count .Visits}}</td>
+                <td class="num">{{money .TotalCents}}</td>
+                <td class="nowrap">{{day .LastOn}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {{end}}
+{{else}}
+  <div class="empty">
+    <h2>No service history yet</h2>
+    <p>Every invoice with an odometer reading on it makes the next one predictable.</p>
+  </div>
+{{end}}
+
+{{if $can}}
+<div class="card" id="add">
+  <h2>{{if .Editing}}Edit this visit{{else}}Log a service{{end}}</h2>
+  <form method="post" action="/vehicle/{{$v.Slug}}/service">
+    <input type="hidden" name="editing" value="{{.Editing}}">
+    <div class="grid">
+      <div class="field">
+        <label for="on">Date</label>
+        <input id="on" type="date" name="on" value="{{.Service.On}}" required>
+      </div>
+      <div class="field">
+        <label for="odometer">Odometer</label>
+        <input id="odometer" type="number" name="odometer" min="0" step="1" inputmode="numeric"
+               value="{{if .Service.Odometer}}{{.Service.Odometer}}{{end}}" required>
+      </div>
+      <div class="field">
+        <label for="shop">Shop</label>
+        <input id="shop" type="text" name="shop" value="{{.Service.Shop}}" placeholder="West Side VW" list="shops">
+        <datalist id="shops">
+          {{range $shop.Shops}}<option value="{{.Name}}"></option>{{end}}
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="cost">Cost</label>
+        <input id="cost" type="text" name="cost" inputmode="decimal" placeholder="0.00"
+               value="{{moneyInput .Service.CostCents}}">
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:14px">
+      <label for="work">Work done <span class="hint">one item a line, the way the invoice lists them</span></label>
+      <textarea id="work" name="work" placeholder="Oil change&#10;Tire rotation&#10;Cabin / pollen filter">{{.Service.Work}}</textarea>
+    </div>
+
+    <div class="field">
+      <label for="note">Note <span class="hint">warranty, part numbers, what they said about the tyres</span></label>
+      <input id="note" type="text" name="note" value="{{.Service.Note}}">
+    </div>
+
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-check" aria-hidden="true"></i>{{if .Editing}}Save changes{{else}}Log it{{end}}</button>
+      {{if .Editing}}<a class="btn" href="/vehicle/{{$v.Slug}}/service">Cancel</a>{{end}}
+    </div>
+  </form>
+
+  {{if .Editing}}
+    <form method="post" action="/vehicle/{{$v.Slug}}/service/delete" style="margin-top:14px"
+          data-confirm="Delete the visit on {{day .Service.On}} at {{miles .Service.Odometer}} miles? This cannot be undone.">
+      <input type="hidden" name="id" value="{{.Editing}}">
+      <button class="danger small" type="submit"><i class="ico fa-solid fa-trash" aria-hidden="true"></i>Delete this visit</button>
+    </form>
+  {{end}}
+</div>
+{{end}}
+{{end}}
