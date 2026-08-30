@@ -41,6 +41,8 @@ var notices = map[string]string{
 	"removed":   "Removed.",
 	"retired":   "Marked as retired. Every per-day figure now stops on the day it went.",
 	"unretired": "Back in the garage. The per-day figures are counting again.",
+	"default":   "Opening the site now goes straight to that vehicle.",
+	"nodefault": "Opening the site now shows the garage.",
 }
 
 // Page starts a page with the visitor already on it.

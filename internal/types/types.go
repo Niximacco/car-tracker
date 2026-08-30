@@ -65,6 +65,15 @@ type User struct {
 	// Disabled keeps the entity around for history while blocking logins. An
 	// account that logged two years of fill-ups still has its name on them.
 	Disabled bool `json:"disabled"`
+	// DefaultVehicle is the slug of the car this account opens on, or empty for
+	// an account that lands in the garage.
+	//
+	// It is a preference rather than a permission: it is only ever read to
+	// decide where "/" sends somebody, and the car's own page checks who is
+	// asking exactly as it would for any other visit. A slug that has since
+	// been deleted, or unshared, is nothing worse than a landing that falls
+	// back to the garage.
+	DefaultVehicle string `json:"default_vehicle"`
 }
 
 // CanEdit reports whether this account may change anything at all.
