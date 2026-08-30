@@ -33,8 +33,27 @@ var (
 
 const (
 	// SESSION_VALID_TIME is how long a session survives without the user coming
-	// back. Every visit re-issues the token, so an active user never expires.
-	SESSION_VALID_TIME = 30 * 24 * time.Hour
+	// back. Every visit re-issues the token, so somebody who uses the site never
+	// expires; this is the gap that ends one.
+	//
+	// A year, rather than the thirty days the sibling services use, because
+	// this site is opened at a pump. The gap between fill-ups in the history
+	// this replaces averages 25 days and runs to 99 - sixteen of its sixty-six
+	// gaps are longer than thirty days - so a month-long session would have
+	// demanded a fresh magic link about sixteen times in four years, every one
+	// of them while holding a nozzle. The whole point of the site is to be
+	// faster than the form it replaces, and "check your email" at the pump is
+	// slower than the form it replaces.
+	//
+	// The length is not the revocation window, which is what makes this cheap.
+	// Every request re-reads the account from datastore, so disabling one ends
+	// its sessions on the next click no matter how long its token had left. A
+	// year is what somebody would have to keep an unlocked device for, not what
+	// they would keep access for after being shut out.
+	//
+	// It stays under 400 days deliberately: browsers cap cookie lifetime there,
+	// and a longer value would be silently clamped rather than honoured.
+	SESSION_VALID_TIME = 365 * 24 * time.Hour
 	// REFRESH_AFTER is how old a token has to be before a visit re-issues it.
 	// It keeps us from writing a Set-Cookie header on every single request.
 	REFRESH_AFTER = 1 * time.Hour
@@ -232,7 +251,8 @@ func resolve(c *gin.Context) (email string, err error) {
 
 // authenticate resolves the session and confirms the account behind it is still
 // allowed in. Access revoked in datastore therefore takes effect on the next
-// request, rather than whenever a 30 day cookie happens to expire.
+// request, rather than whenever the cookie happens to expire - which, at a
+// year, would be far too late to be the answer to anything.
 //
 // The user is put on the context so the rest of the request can ask about
 // admin rights without paying for a second lookup.
@@ -341,7 +361,7 @@ func RequiredPage() gin.HandlerFunc {
 //
 // Like admin, the flag is read from datastore on every request rather than
 // carried in the token, so taking somebody's editing away takes effect on their
-// next click instead of whenever a thirty day cookie happens to expire.
+// next click instead of whenever a year-long cookie happens to expire.
 func Editor() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if IsViewOnly(c) {
@@ -371,7 +391,7 @@ func Editor() gin.HandlerFunc {
 //
 // Admin status is read from datastore on every request rather than carried in
 // the token, so revoking it takes effect immediately instead of waiting out a
-// thirty day cookie.
+// year-long cookie.
 func Admin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !IsAdmin(c) {

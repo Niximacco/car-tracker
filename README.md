@@ -12,6 +12,19 @@ handful somebody had the patience to write formulas for.
 Sign in is passwordless: an allow-listed address requests a magic link, clicking it starts a session,
 and the session cookie slides forward every time you come back. Every page needs one.
 
+**The session lasts a year**, rather than the thirty days the sibling services use. That is a decision
+this repository's own data made: the gaps between fill-ups in the history it replaces average 25 days
+and run to 99, and sixteen of the sixty-six are longer than a month — so a thirty day session would
+have demanded a fresh magic link about sixteen times in four years, every one of them while standing
+at a pump holding a nozzle. The point of this site is to be faster than the form it replaces, and
+"check your email" at the pump is slower than the form it replaces.
+
+The length is not the revocation window, which is what makes it cheap. Every request re-reads the
+account from datastore, so disabling one ends its sessions on the next click no matter how long its
+token had left. A year is what somebody would have to keep an unlocked phone for, not what they would
+keep access for after being shut out. It stays under 400 days deliberately: browsers cap cookie
+lifetime there, and anything longer is silently clamped rather than honoured.
+
 The link itself comes from [ajn_auth](https://github.com/Niximacco/ajn_auth), the shared service at
 `auth.ajn.me`. Minting the token, mailing it, hosting the "yes, it was me" page and the per-address
 send caps all live there. What stays here is the half a shared service cannot hold: **who may sign
@@ -185,8 +198,9 @@ gives **28 December 2021 at 68,074 miles**. Those are pre-filled on the vehicle;
 | **Blocked** | Kept for history, cannot sign in |
 
 An account's flags are read from datastore on every request rather than carried in the token, so
-revoking access takes effect on somebody's next click rather than whenever a thirty day cookie
-happens to expire.
+revoking access takes effect on somebody's next click rather than whenever the cookie happens to
+expire. That is what makes the long session below safe: its length is what somebody would have to
+keep an unlocked device for, not what they would keep access for after being shut out.
 
 On a particular vehicle there are two more questions, and they are on the vehicle rather than on the
 account. **Anybody it is shared with** may log fill-ups and shop visits, and correct or delete them.
