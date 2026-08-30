@@ -1,0 +1,14 @@
+{{define "content"}}
+<h1><i class="ico fa-solid fa-gauge-high" aria-hidden="true"></i> Sign in</h1>
+<p class="sub">Enter your email and we will send you a link that signs you in. There is no password.</p>
+<form method="post" action="/login">
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="field">
+    <label for="email">Email address</label>
+    <input id="email" type="email" name="email" value="{{.Email}}" placeholder="you@example.com" autocomplete="email" autofocus required>
+  </div>
+  <div class="actions">
+    <button class="primary" type="submit"><i class="ico fa-solid fa-paper-plane" aria-hidden="true"></i>Email me a link</button>
+  </div>
+</form>
+{{end}}

@@ -1,0 +1,84 @@
+{{define "content"}}
+<div class="pagehead">
+  <div>
+    <h1>Who can sign in</h1>
+    <p class="sub">Having a row here is what grants access. There is nothing else to check.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Address</th>
+          <th>Name</th>
+          <th>Added</th>
+          <th>Last seen</th>
+          <th>Can do</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Users}}
+          <tr>
+            <td class="strong">{{.Email}}</td>
+            <td>{{.Name}}</td>
+            <td class="nowrap small muted">{{when .Created}}</td>
+            <td class="nowrap small muted">{{when .LastLogin}}</td>
+            <td>
+              {{if .Disabled}}<span class="pill bad">Blocked</span>
+              {{else if .Admin}}<span class="pill accent">Admin</span>
+              {{else if .ViewOnly}}<span class="pill quiet">Read only</span>
+              {{else}}<span class="pill good">Member</span>{{end}}
+            </td>
+            <td class="nowrap">
+              <form method="post" action="/users/update">
+                <input type="hidden" name="email" value="{{.Email}}">
+                <select name="role" aria-label="What {{.Email}} can do">
+                  <option value="member" {{if and (not .Admin) (not .ViewOnly) (not .Disabled)}}selected{{end}}>Member</option>
+                  <option value="admin" {{if .Admin}}selected{{end}}>Admin</option>
+                  <option value="viewonly" {{if .ViewOnly}}selected{{end}}>Read only</option>
+                  <option value="disabled" {{if .Disabled}}selected{{end}}>Blocked</option>
+                </select>
+                <button class="small" type="submit">Apply</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Let somebody in</h2>
+  <p class="small muted">
+    An address that is not on this list gets exactly the same page at the sign-in form as one that is, and no
+    email is sent - so the form cannot be used to work out who has an account here.
+  </p>
+  <form method="post" action="/users">
+    <div class="grid">
+      <div class="field">
+        <label for="email">Email address</label>
+        <input id="email" type="email" name="email" placeholder="them@example.com" required>
+      </div>
+      <div class="field">
+        <label for="name">Name <span class="hint">optional</span></label>
+        <input id="name" type="text" name="name">
+      </div>
+      <div class="field">
+        <label for="role">What they can do</label>
+        <select id="role" name="role">
+          <option value="member">Member &mdash; their own vehicles, and any shared with them</option>
+          <option value="admin">Admin &mdash; every vehicle, and this page</option>
+          <option value="viewonly">Read only &mdash; can look, cannot log anything</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-user-plus" aria-hidden="true"></i>Add them</button>
+    </div>
+  </form>
+</div>
+{{end}}

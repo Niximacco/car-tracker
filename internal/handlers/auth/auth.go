@@ -1,0 +1,208 @@
+package auth_handler
+
+import (
+	"errors"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/Niximacco/ajn_auth/pkg/authclient"
+	"github.com/Niximacco/car-tracker/internal/auth"
+	data "github.com/Niximacco/car-tracker/internal/cloud"
+	"github.com/Niximacco/car-tracker/internal/ratelimit"
+	"github.com/Niximacco/car-tracker/internal/web"
+	"github.com/gin-gonic/gin"
+)
+
+// login is this site's half of the magic link service at auth.ajn.me. Minting
+// the token, mailing it, hosting the "yes, it was me" page and the per-address
+// send caps all live there now, because they were byte-identical in three sites
+// and a bug in that email was three fixes.
+//
+// What did not move is the part that is actually ours: who may sign in. The
+// service can say somebody proved they can read an address. It holds no user
+// list and has no opinion about whether that address gets a session here.
+var login = authclient.New()
+
+// LINK_VALID_MINUTES is what the "check your email" page tells the visitor. The
+// clock behind it belongs to the service, so this is a copy of a number set
+// somewhere else - which is fine for a sentence of reassurance, and is why
+// nothing here decides anything from it.
+const LINK_VALID_MINUTES = 15
+
+// The two routes that turn an anonymous request into datastore work get a per
+// caller ceiling. This is about the cost of being probed - datastore reads and
+// instance time - rather than about email: an address that is not on the allow
+// list never reaches the service at all, and the ones that are have their own
+// per-address caps there. Both are generous enough that a person retrying will
+// not meet them, and per instance, so they are a brake on floods rather than a
+// promise.
+var (
+	loginLimiter    = ratelimit.New(10, time.Minute)
+	callbackLimiter = ratelimit.New(20, time.Minute)
+)
+
+func AddAuthV1(router *gin.Engine) {
+	// Said at start rather than at somebody's first login, which is the other
+	// place an unset key would be discovered.
+	if !login.Configured() {
+		log.Print("WARNING: AJN_AUTH_URL and/or AJN_AUTH_API_KEY are unset, magic link login is disabled")
+	}
+
+	router.GET("/login", auth.Optional(), LoginPage)
+	router.POST("/login", loginLimiter.Middleware(web.TooManyRequests(time.Minute)), auth.Optional(), RequestMagicLink)
+	router.GET("/auth/callback", callbackLimiter.Middleware(web.TooManyRequests(time.Minute)), CompleteLogin)
+	router.POST("/logout", Logout)
+
+	router.GET("/api/auth/session", auth.Required(), Session)
+}
+
+func LoginPage(c *gin.Context) {
+	next := web.SafeNext(c.Query("next"))
+
+	if auth.IsSignedIn(c) {
+		c.Redirect(http.StatusFound, next)
+		return
+	}
+
+	page := web.New("Sign in")
+	page.Next = next
+
+	web.Render(c, http.StatusOK, web.LoginPage, page)
+}
+
+func RequestMagicLink(c *gin.Context) {
+	next := web.SafeNext(c.PostForm("next"))
+	address := data.NormalizeEmail(c.PostForm("email"))
+
+	page := web.New("Sign in")
+	page.Next = next
+	page.Email = address
+
+	// Junk is worth saying so about before anything else happens. This is a
+	// check on the shape of the string and tells the visitor nothing about who
+	// has an account here, which is what the rest of this function is careful
+	// of.
+	if !data.ValidAddress(address) {
+		page.Error = "That doesn't look like an email address."
+		web.Render(c, http.StatusBadRequest, web.LoginPage, page)
+		return
+	}
+
+	// The user list is ours and stays ours. An address that is not on it gets
+	// the same page as one that is, and no call is made - so the sign in form
+	// cannot be used to work out who has an account here, and a stranger's
+	// address never costs us an email.
+	if _, err := data.GetUser(address); err == nil {
+		switch _, err := login.RequestLink(c, address, next); {
+		case err == nil:
+			// Sent or throttled. The two come back the same way on purpose and
+			// are rendered the same way here: telling one address "slow down"
+			// and another "check your email" is the address checker again.
+
+		case errors.Is(err, authclient.ErrInvalidEmail):
+			page.Error = "That doesn't look like an email address."
+			web.Render(c, http.StatusBadRequest, web.LoginPage, page)
+			return
+
+		case errors.Is(err, authclient.ErrNotConfigured), errors.Is(err, authclient.ErrUnauthorized):
+			// Ours to fix rather than theirs: no key, a wrong url, or a key
+			// this site no longer holds. Worth its own log line, because
+			// nothing else in the service will notice.
+			log.Printf("this site cannot ask ajn auth for a link: %s", err.Error())
+			page.Title = "Sign in unavailable"
+			page.Error = "Sign in is temporarily unavailable. Please try again later."
+			web.Render(c, http.StatusServiceUnavailable, web.MessagePage, page)
+			return
+
+		default:
+			log.Printf("could not send a magic link: %s", err.Error())
+			page.Title = "Sign in unavailable"
+			page.Error = "We couldn't send your sign in link. Please try again."
+			web.Render(c, http.StatusServiceUnavailable, web.MessagePage, page)
+			return
+		}
+	}
+
+	page.Title = "Check your email"
+	page.ExpiresMinutes = LINK_VALID_MINUTES
+	web.Render(c, http.StatusOK, web.SentPage, page)
+}
+
+// CompleteLogin turns an exchange code into a session.
+//
+// The confirm step that used to be here - "yes, it was me", which is what kept
+// a mail scanner from burning the token on its way past - moved to the service
+// along with the token itself. What lands on this route now is a code that has
+// already been through it, arriving on one redirect and worth nothing a moment
+// later.
+func CompleteLogin(c *gin.Context) {
+	identity, err := login.Redeem(c, c.Query("code"))
+	if err != nil {
+		page := web.New("That link didn't work")
+
+		if errors.Is(err, authclient.ErrBadCode) {
+			page.Error = "This sign in link has already been used or has expired. Request a new one."
+			web.Render(c, http.StatusUnauthorized, web.MessagePage, page)
+			return
+		}
+
+		log.Printf("could not redeem a login code: %s", err.Error())
+		page.Title = "Sign in unavailable"
+		page.Error = "Something went wrong signing you in. Please try again."
+		web.Render(c, http.StatusServiceUnavailable, web.MessagePage, page)
+		return
+	}
+
+	// Ask the user list again. The link this code came from can sit in an inbox
+	// for a quarter of an hour, and an account can be removed in fourteen
+	// minutes of that.
+	address := data.NormalizeEmail(identity.Email)
+	if _, err = data.GetUser(address); err != nil {
+		page := web.New("That account can no longer sign in")
+
+		if errors.Is(err, data.UserNotFoundErr) || errors.Is(err, data.UserDisabledErr) {
+			page.Error = "That account can no longer sign in."
+			web.Render(c, http.StatusUnauthorized, web.MessagePage, page)
+			return
+		}
+
+		log.Printf("could not check who is signing in: %s", err.Error())
+		page.Title = "Something went wrong"
+		page.Error = "Something went wrong signing you in. Please try again."
+		web.Render(c, http.StatusInternalServerError, web.MessagePage, page)
+		return
+	}
+
+	if err = auth.StartSession(c, address); err != nil {
+		log.Printf("could not issue session token: %s", err.Error())
+		page := web.New("Something went wrong")
+		page.Error = "We couldn't start your session. Please try again."
+		web.Render(c, http.StatusInternalServerError, web.MessagePage, page)
+		return
+	}
+
+	// The sign in already happened; a failure to write it down is not worth
+	// turning anybody away for.
+	if err = data.MarkLoggedIn(address, time.Now()); err != nil {
+		log.Printf("could not record login time: %s", err.Error())
+	}
+
+	log.Printf("signed in %s", address)
+
+	// The service hands back the next it was given, untouched and unexamined.
+	// It is our value, so it goes through our own sanitizing before a browser
+	// is pointed at it.
+	c.Redirect(http.StatusSeeOther, web.SafeNext(identity.Next))
+}
+
+func Logout(c *gin.Context) {
+	auth.ClearSessionCookie(c)
+	c.Redirect(http.StatusSeeOther, "/login")
+}
+
+// Session reports who the caller is. Hitting it also slides the session forward,
+// same as any other authenticated request.
+func Session(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"email": auth.Email(c)})
+}

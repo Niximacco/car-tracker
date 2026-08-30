@@ -1,0 +1,68 @@
+{{define "content"}}
+<div class="pagehead">
+  <div>
+    <h1>Add a vehicle</h1>
+    <p class="sub">The name is the only thing this needs. Everything else can be filled in later, and the two
+      dates at the bottom are worth filling in now.</p>
+  </div>
+</div>
+
+<div class="card">
+  <form method="post" action="/vehicles/new">
+    <div class="grid">
+      <div class="field">
+        <label for="name">Name <span class="hint">what the pages call it</span></label>
+        <input id="name" type="text" name="name" value="{{.Vehicle.Name}}" placeholder="The wagon" autofocus required>
+      </div>
+      <div class="field">
+        <label for="year">Year</label>
+        <input id="year" type="number" name="year" min="1900" max="2100" step="1" value="{{if .Vehicle.Year}}{{.Vehicle.Year}}{{end}}">
+      </div>
+      <div class="field">
+        <label for="make">Make</label>
+        <input id="make" type="text" name="make" value="{{.Vehicle.Make}}" placeholder="Volkswagen">
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <input id="model" type="text" name="model" value="{{.Vehicle.Model}}">
+      </div>
+      <div class="field">
+        <label for="trim">Trim</label>
+        <input id="trim" type="text" name="trim" value="{{.Vehicle.Trim}}">
+      </div>
+      <div class="field">
+        <label for="tank">Tank, gallons <span class="hint">optional</span></label>
+        <input id="tank" type="number" name="tank" min="0" step="0.1" value="{{if .Vehicle.TankGallons}}{{gallons .Vehicle.TankGallons}}{{end}}">
+      </div>
+    </div>
+
+    <hr>
+
+    <h3>Where the clock starts</h3>
+    <p class="small muted">
+      Total miles is measured from the reading on the day you got it, not from the first fill-up you happen to
+      log. Cost a day and cost a month are measured from the date. Both can be set later, and until they are,
+      those figures are simply missing.
+    </p>
+    <div class="grid">
+      <div class="field">
+        <label for="purchased">Bought on</label>
+        <input id="purchased" type="date" name="purchased" value="{{.Vehicle.PurchasedOn}}">
+      </div>
+      <div class="field">
+        <label for="odometer">Odometer that day</label>
+        <input id="odometer" type="number" name="odometer" min="0" step="1" value="{{if .Vehicle.PurchaseOdometer}}{{.Vehicle.PurchaseOdometer}}{{end}}">
+      </div>
+      <div class="field">
+        <label for="price">What it cost <span class="hint">optional</span></label>
+        <input id="price" type="text" name="price" inputmode="decimal" value="{{moneyInput .Vehicle.PurchasePriceCents}}">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" type="submit"><i class="ico fa-solid fa-check" aria-hidden="true"></i>Add it</button>
+      <a class="btn" href="/">Cancel</a>
+    </div>
+  </form>
+</div>
+{{end}}
