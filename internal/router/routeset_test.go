@@ -20,6 +20,8 @@ import (
 // The cases this really exists for are "/vehicles/new" beside "/vehicle/:slug",
 // which are two static segments that differ by one letter with a parameter
 // behind one of them, and the four static segments hanging off that parameter.
+// "/vehicles/default" is a second static child of the first of those, and
+// "/garage" is a page beside a "/" that is now a redirect.
 func TestTheWholeRouteSetRegistersAndResolves(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -43,7 +45,9 @@ func TestTheWholeRouteSetRegistersAndResolves(t *testing.T) {
 	r.GET("/api/auth/session", mark("session"))
 
 	// page_handler.AddPagesV1
-	r.GET("/", mark("garage"))
+	r.GET("/", mark("home"))
+	r.GET("/garage", mark("garage"))
+	r.POST("/vehicles/default", mark("setdefault"))
 	r.GET("/profile", mark("profile"))
 	r.POST("/profile", mark("saveprofile"))
 
@@ -84,7 +88,8 @@ func TestTheWholeRouteSetRegistersAndResolves(t *testing.T) {
 		path   string
 		want   string
 	}{
-		{http.MethodGet, "/", "garage"},
+		{http.MethodGet, "/", "home"},
+		{http.MethodGet, "/garage", "garage"},
 		{http.MethodGet, "/healthz", "health"},
 		{http.MethodGet, "/static/app.a1b2c3d4e5.css", "asset"},
 		{http.MethodGet, "/login", "login"},
@@ -95,6 +100,7 @@ func TestTheWholeRouteSetRegistersAndResolves(t *testing.T) {
 		// happens to be "vehicles" must not shadow anything.
 		{http.MethodGet, "/vehicles/new", "newcar"},
 		{http.MethodPost, "/vehicles/new", "createcar"},
+		{http.MethodPost, "/vehicles/default", "setdefault"},
 		{http.MethodGet, "/vehicle/the-wagon", "overview"},
 		{http.MethodGet, "/vehicle/the-wagon/fuel", "fuel"},
 		{http.MethodPost, "/vehicle/the-wagon/fuel/delete", "deletefill"},

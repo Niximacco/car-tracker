@@ -425,8 +425,12 @@ button.link:hover { background: var(--sunken); color: var(--text); }
   margin-bottom: 20px;
 }
 
+/* The card is a box with a link filling most of it rather than a link that is
+   the whole box, because the buttons along its bottom are the point of it and
+   an anchor cannot hold another one. */
 .car {
-  display: block;
+  display: flex;
+  flex-direction: column;
   padding: 20px 22px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -439,7 +443,37 @@ button.link:hover { background: var(--sunken); color: var(--text); }
 .car:hover {
   border-color: var(--accent-line);
   box-shadow: var(--shadow-md);
-  text-decoration: none;
+}
+
+.car.default { border-color: var(--accent-line); }
+
+/* flex: 1 so that the buttons sit on the bottom edge of every card in a row,
+   however much taller the tallest one is. */
+.carbody {
+  flex: 1;
+  display: block;
+  color: var(--text);
+}
+
+.carbody:hover { text-decoration: none; }
+
+.carbtns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.carbtns .spacer { flex: 1; }
+.carbtns form { margin: 0; }
+
+.carbtns .star.on {
+  background: var(--accent-weak);
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
 .car h2 { margin: 0 0 2px; }

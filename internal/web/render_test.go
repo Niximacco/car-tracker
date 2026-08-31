@@ -148,6 +148,7 @@ func samplePage(title string) Page {
 	}
 
 	page.You = page.Users[0]
+	page.You.DefaultVehicle = vehicle.Slug
 
 	page.SeedFillups = 67
 	page.SeedServices = 11
@@ -199,6 +200,59 @@ func TestAViewOnlyAccountIsNotOfferedTheAddButton(t *testing.T) {
 
 	if strings.Contains(body, "/vehicles/new") {
 		t.Error("the garage offers a view-only account a link to add a vehicle")
+	}
+
+	// The same applies to the two things on a card that write: logging against a
+	// vehicle, and choosing which one the site opens on.
+	for _, offer := range []string{"/fuel#add", "/service#add", "/vehicles/default"} {
+		if strings.Contains(body, offer) {
+			t.Errorf("the garage offers a view-only account %s", offer)
+		}
+	}
+}
+
+// Logging a fill-up is what somebody standing at a pump opened the site to do,
+// so it has to be on the card rather than two pages behind it - and the card
+// has to say which vehicle the site now opens on, since that is the only place
+// the choice is made.
+func TestTheGarageOffersEachCarsLogsAndMarksTheDefault(t *testing.T) {
+	page := samplePage("Garage")
+
+	body := render(t, GaragePage, page)
+
+	for _, card := range page.Cards {
+		for _, want := range []string{
+			"/vehicle/" + card.Vehicle.Slug + "/fuel#add",
+			"/vehicle/" + card.Vehicle.Slug + "/service#add",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("the garage does not offer %s", want)
+			}
+		}
+	}
+
+	// The default card's button clears the choice, so it posts nothing; every
+	// other card's posts its own slug.
+	if !strings.Contains(body, `<input type="hidden" name="slug" value="">`) {
+		t.Error("the default vehicle's card does not offer to clear the choice")
+	}
+
+	if !strings.Contains(body, `<input type="hidden" name="slug" value="the-truck">`) {
+		t.Error("a card that is not the default does not offer to become it")
+	}
+}
+
+// A card is only the default when the account has actually chosen one. An empty
+// preference matching an empty slug would mark every card on the page.
+func TestNoCardIsTheDefaultUntilOneIsChosen(t *testing.T) {
+	page := samplePage("Garage")
+	page.You.DefaultVehicle = ""
+	page.Cards = []Card{{Vehicle: types.Vehicle{Name: "Nameless"}}}
+
+	body := render(t, GaragePage, page)
+
+	if strings.Contains(body, "star on") {
+		t.Error("a card is marked as the default when the account has not chosen one")
 	}
 }
 

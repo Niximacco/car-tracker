@@ -251,6 +251,20 @@ func UpdateUser(email string, name *string, admin *bool, viewOnly *bool,
 	return user, err
 }
 
+// SetDefaultVehicle remembers which car an account opens on, or forgets it when
+// the slug is empty.
+//
+// It is its own call rather than another pointer on UpdateUser because it is a
+// different kind of change: UpdateUser is an admin deciding what an account may
+// do, and this is an account deciding where it lands. Nothing here needs to
+// check the slug - the handler has already made sure this account can see that
+// car, and the page it points at checks again on every visit.
+func SetDefaultVehicle(email string, slug string) error {
+	return setUserProperties(email, map[string]interface{}{
+		"DefaultVehicle": strings.TrimSpace(slug),
+	})
+}
+
 func MarkLoggedIn(email string, at time.Time) error {
 	return setUserProperties(email, map[string]interface{}{"LastLogin": at.Unix()})
 }

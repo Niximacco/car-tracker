@@ -59,6 +59,9 @@ func TestWritePreviewPages(t *testing.T) {
 	page.CanManage = true
 	page.Vehicle = vehicle
 	page.Report = report
+	page.You.Email = "anthony@example.com"
+	page.You.DefaultVehicle = vehicle.Slug
+	page.Cards = []Card{{Vehicle: vehicle, Summary: report.Summary, LastOn: report.Summary.LastOn}}
 
 	page.MPGChart = MPGChart(report)
 	page.PriceChart = PriceChart(report)
@@ -99,6 +102,7 @@ func TestWritePreviewPages(t *testing.T) {
 	}
 
 	for name, file := range map[string]string{
+		GaragePage:   "garage.html",
 		VehiclePage:  "overview.html",
 		InsightsPage: "insights.html",
 		FillupsPage:  "fuel.html",

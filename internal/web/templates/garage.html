@@ -2,7 +2,9 @@
 <div class="pagehead">
   <div>
     <h1>The garage</h1>
-    <p class="sub">Every vehicle you own, and every one shared with you.</p>
+    <p class="sub">
+      Every vehicle you own, and every one shared with you.{{if .You.DefaultVehicle}} Opening the site goes straight to your default.{{end}}
+    </p>
   </div>
   <span class="spacer"></span>
   {{if not .ViewOnly}}
@@ -13,36 +15,63 @@
 {{if .Cards}}
   <div class="cars">
     {{range .Cards}}
-      <a class="car" href="/vehicle/{{.Vehicle.Slug}}">
-        <h2>{{.Vehicle.Called}}</h2>
-        <p class="desc">
-          {{with .Vehicle.Described}}{{.}}{{else}}No make or model set{{end}}
-          {{if .Shared}}<span class="pill quiet">{{accountName .Vehicle.Owner}}'s</span>{{end}}
-          {{if .Vehicle.Retired}}<span class="pill quiet">Retired</span>{{end}}
-        </p>
-        <dl>
-          <div>
-            <dt>Odometer</dt>
-            <dd>{{if .Summary.LatestOdometer}}{{miles .Summary.LatestOdometer}}{{else}}&mdash;{{end}}</dd>
+      {{$default := and (ne $.You.DefaultVehicle "") (eq $.You.DefaultVehicle .Vehicle.Slug)}}
+      <div class="car{{if $default}} default{{end}}">
+        <a class="carbody" href="/vehicle/{{.Vehicle.Slug}}">
+          <h2>{{.Vehicle.Called}}</h2>
+          <p class="desc">
+            {{with .Vehicle.Described}}{{.}}{{else}}No make or model set{{end}}
+            {{if .Shared}}<span class="pill quiet">{{accountName .Vehicle.Owner}}'s</span>{{end}}
+            {{if .Vehicle.Retired}}<span class="pill quiet">Retired</span>{{end}}
+          </p>
+          <dl>
+            <div>
+              <dt>Odometer</dt>
+              <dd>{{if .Summary.LatestOdometer}}{{miles .Summary.LatestOdometer}}{{else}}&mdash;{{end}}</dd>
+            </div>
+            <div>
+              <dt>Miles per gallon</dt>
+              <dd>{{mpg .Summary.MeasuredMPG}}</dd>
+            </div>
+            <div>
+              <dt>Cost per mile</dt>
+              <dd>{{cents .Summary.TotalPerMile}}</dd>
+            </div>
+            <div>
+              <dt>Cost per month</dt>
+              <dd>{{dollars .Summary.TotalPerMonth}}</dd>
+            </div>
+          </dl>
+          <p class="small muted" style="margin-top:14px">
+            {{if .LastOn}}Last entry {{ago .LastOn}}{{else}}Nothing logged yet{{end}}
+            &middot; {{count .Summary.Fills}} fill-ups
+          </p>
+        </a>
+
+        {{/* The two things somebody standing at a pump or leaving a shop is
+             actually here to do, on the card rather than two pages in. Both
+             land on the form at the bottom of the car's own log. */}}
+        {{if not $.ViewOnly}}
+          <div class="carbtns">
+            <a class="btn small" href="/vehicle/{{.Vehicle.Slug}}/fuel#add">
+              <i class="ico fa-solid fa-gas-pump" aria-hidden="true"></i>Log fill-up
+            </a>
+            <a class="btn small" href="/vehicle/{{.Vehicle.Slug}}/service#add">
+              <i class="ico fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>Log service
+            </a>
+            <span class="spacer"></span>
+            {{/* One button that toggles: the default card posts an empty slug,
+                 which is how the choice is cleared. */}}
+            <form method="post" action="/vehicles/default">
+              <input type="hidden" name="slug" value="{{if not $default}}{{.Vehicle.Slug}}{{end}}">
+              <button class="small star{{if $default}} on{{end}}" type="submit"
+                title="{{if $default}}Open the garage instead of this vehicle{{else}}Open this vehicle when you come to the site{{end}}">
+                <i class="ico fa-{{if $default}}solid{{else}}regular{{end}} fa-star" aria-hidden="true"></i>{{if $default}}Default{{else}}Make default{{end}}
+              </button>
+            </form>
           </div>
-          <div>
-            <dt>Miles per gallon</dt>
-            <dd>{{mpg .Summary.MeasuredMPG}}</dd>
-          </div>
-          <div>
-            <dt>Cost per mile</dt>
-            <dd>{{cents .Summary.TotalPerMile}}</dd>
-          </div>
-          <div>
-            <dt>Cost per month</dt>
-            <dd>{{dollars .Summary.TotalPerMonth}}</dd>
-          </div>
-        </dl>
-        <p class="small muted" style="margin-top:14px">
-          {{if .LastOn}}Last entry {{ago .LastOn}}{{else}}Nothing logged yet{{end}}
-          &middot; {{count .Summary.Fills}} fill-ups
-        </p>
-      </a>
+        {{end}}
+      </div>
     {{end}}
   </div>
 {{else}}
