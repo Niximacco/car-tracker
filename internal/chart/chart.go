@@ -106,6 +106,13 @@ type Chart struct {
 	// Empty is set when there was nothing to plot, so the page can say so
 	// rather than drawing an empty box with an axis on it.
 	Empty bool
+	// Trimmed is how many readings the caller left off the front of the picture
+	// because they were too far outside the rest of it to draw to scale.
+	//
+	// The chart does not decide this and does not do it - a chart that quietly
+	// drops readings is a chart that lies. The caller decides, and puts the
+	// count here so that the page underneath can say out loud what is missing.
+	Trimmed int
 	// Left and Right are where the gridlines start and stop.
 	Left  string
 	Right string
@@ -326,7 +333,16 @@ func number(value float64) string {
 }
 
 // trim formats an axis label: whole numbers plainly, fractions to one place.
+//
+// Zero is written out by hand because printf will not. The vertical range is
+// opened out a little at each end, so a chart whose readings start at nothing -
+// a month with no fill-ups in it, a shop line that is flat for a year - has a
+// gridline a hair below zero, and "%.0f" renders that as "-0".
 func trim(value float64) string {
+	if math.Abs(value) < 0.001 {
+		return "0"
+	}
+
 	if math.Abs(value-math.Round(value)) < 0.001 {
 		return fmt.Sprintf("%.0f", value)
 	}

@@ -93,7 +93,7 @@
           <button class="primary" type="submit">
             <i class="ico fa-solid fa-file-import" aria-hidden="true"></i>Import {{count .Preview.Fillups}} fill-ups and {{count .Preview.Services}} visits
           </button>
-          <a class="btn" href="/vehicle/{{$v.Slug}}/import">Start again</a>
+          <a class="btn" href="/vehicle/{{$v.Slug}}/import">Start over</a>
         </div>
       </form>
     {{end}}
@@ -105,8 +105,8 @@
   <p class="small muted">
     Download the sheet as csv, or select the cells and copy them. The first line has to be the column headings.
     It needs a date column and an odometer column; from there, a row with gallons on it is a fill-up and a row
-    with work on it is a visit to the shop. Columns it does not recognise - the mpg, the running total, anything
-    this site works out for itself - are ignored rather than complained about.
+    with work on it is a visit to the shop. Columns it does not recognize - the mpg, the running total, anything
+    this site calculates for itself - are ignored rather than complained about.
   </p>
   <form method="post" action="/vehicle/{{$v.Slug}}/import">
     <div class="field">

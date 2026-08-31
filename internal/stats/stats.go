@@ -33,6 +33,18 @@ const daysInMonth = 365.0 / 12.0
 // inside a season.
 const rollingWindow = 5
 
+// poundsCO2PerGallon is the EPA's figure for burning a gallon of gasoline. It
+// is here as a named constant rather than inline so that the one number this
+// site takes on trust from somebody else is easy to find and to change.
+const poundsCO2PerGallon = 19.6
+
+// outlierFence is how far outside the middle half of a column a reading has to
+// sit before a chart stops drawing it to scale. One and a half times the
+// interquartile range is Tukey's, and it is the conventional answer for the
+// same reason 0.05 is: not because it is right, but because everybody means
+// the same thing by it.
+const outlierFence = 1.5
+
 // Fill is one fill-up with everything that can be worked out from it and the
 // fill before it.
 //
@@ -74,6 +86,11 @@ type Fill struct {
 	RunningCents     int64
 	DaysOwned        int
 	CostPerDayCents  float64
+	// CostPerMileCents is the same running total against distance instead of
+	// time. It is the figure that survives a change in how much you drive,
+	// which the per-day one does not: a month of working from home lowers the
+	// cost per day of a car that has become no cheaper to run.
+	CostPerMileCents float64
 }
 
 // Suspect reports whether this fill is worth a second look before it is
@@ -117,6 +134,17 @@ type Report struct {
 	Records  Records
 	Outlook  Outlook
 	Shop     ShopStats
+
+	// Timeline is the history bucketed by calendar month, gaps included, which
+	// is what the monthly charts are drawn from.
+	Timeline []Period
+	// Spread is the shape of the numbers rather than their average, Trend is
+	// the direction they are moving in, and Habits is when you actually stop
+	// for fuel. None of the three changes a total anywhere; they are the
+	// questions a column of figures answers only if you stare at it.
+	Spread Spread
+	Trend  Trend
+	Habits Habits
 }
 
 // Any reports whether there is enough history here to be worth drawing a page
@@ -207,6 +235,32 @@ type Summary struct {
 	// MeasuredFills is how many tanks that figure rests on.
 	MeasuredFills int
 
+	// GallonsPer100Miles is the fuel figure upside down, and it is the one to
+	// think in when you are comparing two cars. Miles per gallon is a ratio
+	// with the money on the bottom, so equal steps in it are not equal amounts
+	// of fuel: 20 to 25 mpg saves twice what 40 to 45 does, and only the
+	// hundred-mile figure shows that.
+	GallonsPer100Miles float64
+	// FuelPer100Miles is the same distance priced, in cents, at what a gallon
+	// has averaged.
+	FuelPer100Miles float64
+	// CO2Pounds is the carbon dioxide from the gasoline that has been burned,
+	// at the EPA's 19.6 pounds a gallon. It is arithmetic on the gallons rather
+	// than a measurement of anything, and it is here because it is the one
+	// figure a fuel log gives you that no receipt does.
+	CO2Pounds float64
+	// TankRange is how far a full tank goes at the measured average, for a
+	// vehicle whose tank size is on file.
+	TankRange int
+	// MilesPerYear is the daily distance at annual scale, which is the number
+	// insurers and lease terms are written in.
+	MilesPerYear float64
+
+	// What share of the running cost is fuel and what share is the shop. The
+	// two add to a hundred, which is the point of showing them.
+	FuelShare    float64
+	ServiceShare float64
+
 	// The cost of the car itself, for a vehicle that records what it cost. It
 	// is deliberately separate from every figure above: what it costs to run is
 	// a different question from what it has cost to own, and mixing them makes
@@ -288,10 +342,11 @@ type Month struct {
 type Records struct {
 	Best  Fill
 	Worst Fill
-	// Cheapest and Dearest are by what was actually paid a gallon, which is the
-	// number that comes out of your account rather than the one on the sign.
-	Cheapest Fill
-	Dearest  Fill
+	// Cheapest and MostExpensive are by what was actually paid per gallon,
+	// which is the number that comes out of your account rather than the one on
+	// the sign.
+	Cheapest      Fill
+	MostExpensive Fill
 	// Biggest is the most that has ever gone in at once, which is the closest
 	// thing to a measurement of the tank.
 	Biggest Fill
@@ -299,8 +354,13 @@ type Records struct {
 	Longest Fill
 	// Slowest is the longest a single tank has ever taken to use up.
 	Slowest Fill
-	// Dearest single visit to a shop.
+	// The single most expensive visit to a shop.
 	BiggestService types.Service
+	// The calendar month that cost the most and the one that covered the most
+	// ground. They are found over the timeline rather than over the fills,
+	// because "the month that cost the most" is a question about months.
+	CostliestMonth Period
+	FarthestMonth  Period
 
 	AvgDaysBetween  float64
 	AvgMilesBetween float64
@@ -414,6 +474,11 @@ func Analyze(vehicle types.Vehicle, fills []types.Fillup, services []types.Servi
 	report.Records = records(report.Fills, visits)
 	report.Shop = shopStats(visits, report.Summary)
 	report.Outlook = outlook(report.Fills, visits, report.Summary, report.Shop, now)
+	report.Timeline = timeline(report.Fills, visits)
+	report.Records.CostliestMonth, report.Records.FarthestMonth = extremeMonths(report.Timeline)
+	report.Spread = spread(report.Fills)
+	report.Trend = trend(report.Fills, visits, now)
+	report.Habits = habits(report.Fills)
 
 	// The oil figures need the estimated odometer, which needs the outlook,
 	// which needs the shop stats. Rather than untangling that into two passes
@@ -481,6 +546,10 @@ func derive(vehicle types.Vehicle, fills []types.Fillup, visits []types.Service,
 
 		if origin > 0 || !purchased.IsZero() {
 			fill.RunningMiles = fillup.Odometer - origin
+		}
+
+		if fill.RunningMiles > 0 {
+			fill.CostPerMileCents = float64(fill.RunningCents) / float64(fill.RunningMiles)
 		}
 
 		if !purchased.IsZero() {
@@ -609,6 +678,32 @@ func summarize(vehicle types.Vehicle, fills []Fill, visits []types.Service, now 
 
 	if measuredGallons > 0 {
 		summary.MeasuredMPG = float64(measuredMiles) / measuredGallons
+	}
+
+	// The fuel figure the other way up, and the same distance priced. Both come
+	// off the measured average rather than the cumulative one, because they are
+	// the strict answer to "what does this car use" and the cumulative figure
+	// carries miles that no logged gallon paid for.
+	if summary.MeasuredMPG > 0 {
+		summary.GallonsPer100Miles = 100 / summary.MeasuredMPG
+		summary.FuelPer100Miles = summary.GallonsPer100Miles * summary.AvgPriceCents
+
+		if vehicle.TankGallons > 0 {
+			summary.TankRange = int(math.Round(summary.MeasuredMPG * vehicle.TankGallons))
+		}
+	}
+
+	// 19.6 pounds of carbon dioxide a gallon, which is the EPA's figure for
+	// gasoline and is mostly a fact about chemistry rather than about driving:
+	// the carbon in the fuel has to go somewhere, and almost all of it goes
+	// out of the pipe as CO2.
+	summary.CO2Pounds = summary.TotalGallons * poundsCO2PerGallon
+
+	summary.MilesPerYear = summary.MilesPerDay * 365
+
+	if summary.TotalCents > 0 {
+		summary.FuelShare = percent(summary.FuelCents, summary.TotalCents)
+		summary.ServiceShare = percent(summary.ServiceCents, summary.TotalCents)
 	}
 
 	if summary.SavedCents > 0 {
@@ -915,8 +1010,8 @@ func records(fills []Fill, visits []types.Service) Records {
 				found.Cheapest = fill
 			}
 
-			if fill.PricePerGallonCents > found.Dearest.PricePerGallonCents {
-				found.Dearest = fill
+			if fill.PricePerGallonCents > found.MostExpensive.PricePerGallonCents {
+				found.MostExpensive = fill
 			}
 		}
 

@@ -126,10 +126,16 @@ func samplePage(title string) Page {
 	page.MPGChart = MPGChart(report)
 	page.PriceChart = PriceChart(report)
 	page.CostChart = CostChart(report)
+	page.PerMileChart = PerMileChart(report)
+	page.SpendChart = SpendChart(report)
+	page.MilesChart = MilesChart(report)
+	page.TotalChart = TotalChart(report)
 
 	page.WidestYear = 200000
 	page.WidestStation = 3
 	page.WidestMonth = 40
+	page.WidestPeriod = 200000
+	page.WidestDay = 3
 
 	page.Fillup = report.Fills[0].Fillup
 	page.Service = report.Services[0]

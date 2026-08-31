@@ -79,6 +79,28 @@ var funcs = template.FuncMap{
 		return fmt.Sprintf("$%.3f", value/100)
 	},
 
+	// price writes an amount that is already in dollars rather than in cents:
+	// the medians and standard deviations, which are worked out over a column
+	// of prices and never added to anything.
+	"price": func(value float64) string {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return "-"
+		}
+
+		return fmt.Sprintf("$%.2f", value)
+	},
+
+	// signedPrice is a price with its direction kept on it, for the figures
+	// that are a change rather than an amount: what a gallon is doing per year.
+	// A minus sign is the whole message in those, so it is never dropped.
+	"signedPrice": func(value float64) string {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return "-"
+		}
+
+		return fmt.Sprintf("%s$%.2f", sign(value), math.Abs(value))
+	},
+
 	// ----------------------------------------------------------- number ----
 
 	// miles writes a whole number with thousands separators. Odometer readings
@@ -113,6 +135,39 @@ var funcs = template.FuncMap{
 		}
 
 		return fmt.Sprintf("%.1f", value)
+	},
+
+	// signedOne is a decimal with its direction kept on it: how many miles per
+	// gallon a year the car is gaining or losing.
+	"signedOne": func(value float64) string {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return "-"
+		}
+
+		return fmt.Sprintf("%+.2f", value)
+	},
+
+	// whole rounds a calculated figure to a whole number and groups it in
+	// threes: miles a year, pounds of carbon. These are averages rather than
+	// counts, so they arrive as floats, and a decimal place on either of them
+	// would be precision that is not there.
+	"whole": func(value float64) string {
+		if value <= 0 {
+			return "-"
+		}
+
+		return commas(int(math.Round(value)))
+	},
+
+	// tons writes the same weight the way it gets talked about once it is large
+	// enough to be hard to picture in pounds. Short tons, because this is a site
+	// about miles and gallons.
+	"tons": func(value float64) string {
+		if value <= 0 {
+			return "-"
+		}
+
+		return fmt.Sprintf("%.1f", value/2000)
 	},
 
 	// percent writes a proportion. The sign is kept on it, because the one
@@ -231,6 +286,19 @@ var funcs = template.FuncMap{
 		return out
 	},
 
+	// recentMonths is the timeline newest first and cut to a readable length.
+	// The chart above the table draws every month there has ever been; a table
+	// of forty-eight rows is a table nobody scrolls to the bottom of.
+	"recentMonths": func(months []stats.Period, count int) []stats.Period {
+		out := make([]stats.Period, 0, count)
+
+		for at := len(months) - 1; at >= 0 && len(out) < count; at-- {
+			out = append(out, months[at])
+		}
+
+		return out
+	},
+
 	"reverseServices": func(services []types.Service) []types.Service {
 		out := make([]types.Service, 0, len(services))
 		for at := len(services) - 1; at >= 0; at-- {
@@ -316,9 +384,13 @@ type Page struct {
 	// The charts, drawn from the report. They are built on the server for the
 	// same reason the templates are compiled in: there is nothing to fetch, and
 	// the arithmetic behind a line on a page is somewhere a test can reach it.
-	MPGChart   chart.Chart
-	PriceChart chart.Chart
-	CostChart  chart.Chart
+	MPGChart     chart.Chart
+	PriceChart   chart.Chart
+	CostChart    chart.Chart
+	PerMileChart chart.Chart
+	SpendChart   chart.Chart
+	MilesChart   chart.Chart
+	TotalChart   chart.Chart
 
 	// One entry being edited, for the forms.
 	Fillup  types.Fillup
@@ -354,6 +426,8 @@ type Page struct {
 	WidestYear    float64
 	WidestStation float64
 	WidestMonth   float64
+	WidestPeriod  float64
+	WidestDay     float64
 }
 
 // Card is one vehicle as the garage lists it: enough to tell them apart and to
@@ -430,6 +504,17 @@ func TooManyRequests(retryAfter time.Duration) gin.HandlerFunc {
 		page.Error = "Too many attempts from your connection. Wait a minute and try again."
 		Render(c, http.StatusTooManyRequests, MessagePage, page)
 	}
+}
+
+// sign is the "+" or "-" that goes in front of a change, so a formatter can put
+// it before a dollar symbol rather than after it. "-$0.31" is how a person
+// writes it; "$-0.31" is how a printf writes it.
+func sign(value float64) string {
+	if value < 0 {
+		return "-"
+	}
+
+	return "+"
 }
 
 // commas groups a whole number in threes.

@@ -47,12 +47,14 @@ func Overview(c *gin.Context) {
 	page.MPGChart = web.MPGChart(report)
 	page.PriceChart = web.PriceChart(report)
 	page.CostChart = web.CostChart(report)
+	page.PerMileChart = web.PerMileChart(report)
 
 	web.Render(c, http.StatusOK, web.VehiclePage, page)
 }
 
 // Insights is everything the log knows that the log does not say out loud: the
-// years, the weather, the stations, and the extremes.
+// years, the months, the weather, the stations, the spread, the trend, and the
+// extremes.
 func Insights(c *gin.Context) {
 	page, report, ok := access.Car(c, "", "insights")
 	if !ok {
@@ -60,6 +62,10 @@ func Insights(c *gin.Context) {
 	}
 
 	page.Title = page.Vehicle.Called() + " insights"
+
+	page.SpendChart = web.SpendChart(report)
+	page.MilesChart = web.MilesChart(report)
+	page.TotalChart = web.TotalChart(report)
 
 	// The scale each table's bars are drawn against. It is worked out here
 	// because a template cannot take a maximum, and once per table because a
@@ -79,6 +85,18 @@ func Insights(c *gin.Context) {
 	for _, month := range report.Seasons {
 		if month.MPG > page.WidestMonth {
 			page.WidestMonth = month.MPG
+		}
+	}
+
+	for _, month := range report.Timeline {
+		if value := float64(month.TotalCents); value > page.WidestPeriod {
+			page.WidestPeriod = value
+		}
+	}
+
+	for _, day := range report.Habits.Days {
+		if value := float64(day.Fills); value > page.WidestDay {
+			page.WidestDay = value
 		}
 	}
 

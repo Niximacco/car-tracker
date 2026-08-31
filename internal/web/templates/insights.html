@@ -1,5 +1,5 @@
 {{define "content"}}
-{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$r := .Report.Records}}
+{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$r := .Report.Records}}{{$sp := .Report.Spread}}{{$t := .Report.Trend}}{{$h := .Report.Habits}}
 <div class="pagehead">
   <div>
     <h1>{{$v.Called}} &middot; insights</h1>
@@ -11,7 +11,7 @@
 
 {{if not .Report.Fills}}
   <div class="empty">
-    <h2>Nothing to work out yet</h2>
+    <h2>Nothing to calculate yet</h2>
     <p>Two fill-ups is the least this page needs. One tank has nothing to be measured against.</p>
   </div>
 {{else}}
@@ -20,7 +20,7 @@
 <div class="card">
   <h2>Year by year</h2>
   <p class="small muted">
-    Miles and mpg count only the tanks that can carry them. Money counts every gallon and every invoice,
+    Miles and mpg count only the tanks that can carry them. Money counts every gallon and every receipt,
     because you paid for all of them.
   </p>
   <div class="scroll">
@@ -76,6 +76,218 @@
     </table>
   </div>
 </div>
+
+<!-- ------------------------------------------------------ month by month -->
+{{if .Report.Timeline}}
+  <div class="card">
+    <div class="head">
+      <h2>Where the money went, month by month</h2>
+      <span class="spacer"></span>
+      <p class="legend">
+        <span class="fuel"><i></i><span class="name">Fuel</span></span>
+        {{if .Report.Shop.Visits}}<span class="shop"><i></i><span class="name">Maintenance</span></span>{{end}}
+      </p>
+    </div>
+    {{template "chart" .SpendChart}}
+    <p class="small muted">
+      The two lines are different shapes on purpose. Fuel is a low steady hum that follows how much you drove
+      and what the market did; the shop is flat at nothing for months and then spikes. Adding them into one
+      line would hide the only interesting thing about the second one.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>How far, month by month</h2>
+      <span class="spacer"></span>
+      <p class="legend"><span class="miles"><i></i><span class="name">Miles driven</span></span></p>
+    </div>
+    {{template "chart" .MilesChart}}
+    <p class="small muted">
+      Measured miles, which is the same distance the mpg is measured over, so a month with a partial fill in
+      it reads a little low. That is the price of having one distance on this site instead of two that disagree.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>The last two years, month by month</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th class="right">Fills</th>
+            <th class="right">Miles</th>
+            <th class="right">Gallons</th>
+            <th class="right">MPG</th>
+            <th class="right">$/gal</th>
+            <th class="right">Fuel</th>
+            <th class="right">Shop</th>
+            <th class="right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{$widest := .WidestPeriod}}
+          {{range recentMonths .Report.Timeline 24}}
+            <tr>
+              <td class="strong nowrap">{{.Month}} {{.Year}}</td>
+              <td class="num">{{if .Fills}}{{count .Fills}}{{else}}&mdash;{{end}}</td>
+              <td class="num">{{if .Miles}}{{miles .Miles}}{{else}}&mdash;{{end}}</td>
+              <td class="num">{{gallons .Gallons}}</td>
+              <td class="num">{{mpg .MPG}}</td>
+              <td class="num">{{if .Fills}}{{dollars .AvgPriceCents}}{{else}}&mdash;{{end}}</td>
+              <td class="num">{{moneyBlank .FuelCents}}</td>
+              <td class="num">{{moneyBlank .ServiceCents}}</td>
+              <td class="num barcell right">
+                <span class="fill" style="width:{{bar .TotalDollars $widest}}%"></span>
+                <span class="strong">{{moneyBlank .TotalCents}}</span>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted" style="margin-top:14px">
+      A month you did not fill up in is still a row. Leaving it out would draw a gap as if nothing had happened,
+      and nothing happening is the fact worth recording.
+    </p>
+  </div>
+{{end}}
+
+<!-- ------------------------------------------------------ adding up ------>
+<div class="card">
+  <div class="head">
+    <h2>Everything, adding up</h2>
+    <span class="spacer"></span>
+    <p class="legend">
+      <span class="running"><i></i><span class="name">Everything</span></span>
+      {{if .Report.Shop.Visits}}<span class="fuel"><i></i><span class="name">Fuel alone</span></span>{{end}}
+    </p>
+  </div>
+  {{template "chart" .TotalChart}}
+  <p class="small muted">
+    This one only goes up, which is the point of it: the slope is what the car costs to run, and the gap that
+    opens between the two lines is every repair bill you have paid. A stretch that steepens is a car getting
+    more expensive, and that is far easier to see here than in a column of monthly totals.
+  </p>
+</div>
+
+<!-- -------------------------------------------------------------- spread -->
+{{if $sp.Ready}}
+  <div class="card">
+    <div class="head">
+      <h2>How much it varies</h2>
+      <span class="spacer"></span>
+      <span class="pill {{if lt $sp.MPGVariation 8.0}}good{{else}}quiet{{end}}">
+        {{share $sp.MPGVariation}} swing tank to tank
+      </span>
+    </div>
+    <p class="small muted">
+      An average cannot tell a car that returns {{mpg $sp.MPGMedian}} every single time from one that alternates
+      well above and well below it, and those are different cars to own. The spread is the part of the story the
+      average leaves out. Under about 5% is a car driven the same way every week; over 15% is a car doing two
+      quite different jobs.
+    </p>
+    <div class="tiles">
+      <div class="tile">
+        <span class="label">Median tank</span>
+        <span class="value">{{mpg $sp.MPGMedian}}</span>
+        <span class="note">half of {{count $sp.Fills}} measured tanks did better than this</span>
+      </div>
+      <div class="tile">
+        <span class="label">Give or take</span>
+        <span class="value">{{one $sp.MPGStdDev}}</span>
+        <span class="note">mpg, standard deviation &middot; {{share $sp.MPGVariation}} of the average</span>
+      </div>
+      <div class="tile">
+        <span class="label">Eight tanks in ten</span>
+        <span class="value">{{mpg $sp.MPGLow}}&ndash;{{mpg $sp.MPGHigh}}</span>
+        <span class="note">the honest version of best and worst</span>
+      </div>
+      <div class="tile">
+        <span class="label">Middle half</span>
+        <span class="value">{{one $sp.MPGIQR}}</span>
+        <span class="note">mpg wide &middot; where half the tanks land</span>
+      </div>
+    </div>
+
+    {{if $sp.PriceReady}}
+      <div class="tiles" style="margin-bottom:0">
+        <div class="tile">
+          <span class="label">Median gallon</span>
+          <span class="value">{{price $sp.PriceMedian}}</span>
+          <span class="note">against {{dollars $s.AvgPriceCents}} averaged over the gallons</span>
+        </div>
+        <div class="tile">
+          <span class="label">Price swings</span>
+          <span class="value">{{price $sp.PriceStdDev}}</span>
+          <span class="note">standard deviation, per gallon</span>
+        </div>
+        <div class="tile">
+          <span class="label">Eight fills in ten</span>
+          <span class="value">{{price $sp.PriceLow}}&ndash;{{price $sp.PriceHigh}}</span>
+          <span class="note">per gallon</span>
+        </div>
+        <div class="tile {{if lt $sp.PriceVsAverage 0.0}}good{{else}}warn{{end}}">
+          <span class="label">Last fill</span>
+          <span class="value">{{price $sp.PriceNow}}</span>
+          <span class="note">{{percent $sp.PriceVsAverage}} against the lifetime average</span>
+        </div>
+      </div>
+    {{end}}
+  </div>
+{{end}}
+
+<!-- --------------------------------------------------------------- trend -->
+{{if or $t.Ready $t.HasPrior}}
+  <div class="card">
+    <h2>Which way it is going</h2>
+    <p class="small muted">
+      A straight line fitted through every reading, and the last twelve months held against the twelve before
+      them. Both are descriptions of what happened, not predictions - a slope drawn through four winters knows
+      nothing about the fifth.
+    </p>
+    <div class="tiles">
+      {{if $t.Ready}}
+        <div class="tile {{if gt $t.MPGPerYear 0.0}}good{{else}}warn{{end}}">
+          <span class="label">Fuel economy</span>
+          <span class="value">{{signedOne $t.MPGPerYear}}</span>
+          <span class="note">mpg per year, fitted through {{count $t.Fills}} measured tanks</span>
+        </div>
+      {{end}}
+      {{if $t.PriceReady}}
+        <div class="tile">
+          <span class="label">Price at the pump</span>
+          <span class="value">{{signedPrice $t.PricePerYear}}</span>
+          <span class="note">per gallon, per year &middot; the market, not the car</span>
+        </div>
+      {{end}}
+      {{if $t.HasPrior}}
+        <div class="tile {{if lt $t.SpendChange 0.0}}good{{else}}warn{{end}}">
+          <span class="label">Spending</span>
+          <span class="value">{{percent $t.SpendChange}}</span>
+          <span class="note">{{money $t.RecentTotalCents}} this year against {{money $t.PriorTotalCents}} last</span>
+        </div>
+        <div class="tile">
+          <span class="label">Miles driven</span>
+          <span class="value">{{percent $t.MilesChange}}</span>
+          <span class="note">{{miles $t.RecentMiles}} against {{miles $t.PriorMiles}}</span>
+        </div>
+        <div class="tile {{if gt $t.MPGChange 0.0}}good{{else}}warn{{end}}">
+          <span class="label">Economy, year on year</span>
+          <span class="value">{{percent $t.MPGChange}}</span>
+          <span class="note">{{mpg $t.RecentMPG}} mpg against {{mpg $t.PriorMPG}}</span>
+        </div>
+      {{end}}
+    </div>
+    {{if $t.RecentReady}}
+      <p class="small muted" style="margin-top:4px">
+        {{if ge $t.RecentDays 365}}The last twelve months worked out to{{else}}The last {{days $t.RecentDays}} worked out to{{end}} {{dollars $t.RecentPerMonth}} a month:
+        {{dollars $t.RecentFuelPerMonth}} of gas and {{dollars $t.RecentServicePerMonth}} at the shop.
+      </p>
+    {{end}}
+  </div>
+{{end}}
 
 <!-- --------------------------------------------------------- seasonality -->
 <div class="card">
@@ -134,7 +346,7 @@
 
 <!-- ------------------------------------------------------------ stations -->
 <div class="card">
-  <h2>Where you buy fuel</h2>
+  <h2>Where you buy gas</h2>
   <p class="small muted">
     The price column is exactly what it looks like. The mpg column mostly is not - it says more about the roads
     you are on when you stop somewhere than about what came out of the hose.
@@ -177,6 +389,76 @@
   </div>
 </div>
 
+<!-- -------------------------------------------------------------- habits -->
+{{if $h.Ready}}
+  <div class="card">
+    <div class="head">
+      <h2>When you stop for gas</h2>
+      <span class="spacer"></span>
+      <span class="pill quiet">{{share $h.WeekendShare}} on a weekend</span>
+    </div>
+    <p class="small muted">
+      A fact about your week rather than about the car, and the only place the log knows it. Most people fill up
+      on the same two days without ever having decided to.
+    </p>
+
+    <div class="tiles">
+      <div class="tile accent">
+        <span class="label">Busiest day</span>
+        <span class="value small">{{$h.BusiestDay}}</span>
+        <span class="note">over {{count $h.Fills}} fill-ups</span>
+      </div>
+      <div class="tile">
+        <span class="label">Quietest day</span>
+        <span class="value small">{{$h.QuietestDay}}</span>
+        <span class="note">the day you almost never stop</span>
+      </div>
+      {{if $h.HasClock}}
+        {{range $h.Times}}
+          {{if .Fills}}
+            <div class="tile">
+              <span class="label">{{.Label}}</span>
+              <span class="value">{{share .Share}}</span>
+              <span class="note">{{count .Fills}} fills between {{.From}}:00 and {{.To}}:00</span>
+            </div>
+          {{end}}
+        {{end}}
+      {{end}}
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Day</th><th class="right">Fills</th><th class="right">Share</th><th class="right">Gallons</th><th class="right">$/gal</th></tr>
+        </thead>
+        <tbody>
+          {{$widest := .WidestDay}}
+          {{range $h.Days}}
+            <tr>
+              <td class="strong">{{.Day}}</td>
+              <td class="num barcell right">
+                <span class="fill cool" style="width:{{bar .FillsFloat $widest}}%"></span>
+                <span>{{count .Fills}}</span>
+              </td>
+              <td class="num">{{share .Share}}</td>
+              <td class="num">{{gallons .Gallons}}</td>
+              <td class="num">{{dollars .AvgPriceCents}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if $h.HasClock}}
+      <p class="small muted" style="margin-top:14px">
+        The time of day comes from the clock on a fill-up, which is optional - {{count $h.Clocked}} of
+        {{count $h.Fills}} fills carry one, and the rest are left out of that breakdown rather than counted
+        as midnight.
+      </p>
+    {{end}}
+  </div>
+{{end}}
+
 <!-- ------------------------------------------------------------- records -->
 <div class="card">
   <h2>Extremes, and what they are extreme against</h2>
@@ -192,7 +474,7 @@
       <span class="note">{{day $r.Worst.On}} &middot; {{miles $r.Worst.Miles}} miles on {{gallons $r.Worst.Gallons}}</span>
     </div>
     <div class="tile">
-      <span class="label">Furthest on one tank</span>
+      <span class="label">Farthest on one tank</span>
       <span class="value">{{miles $r.Longest.Miles}}</span>
       <span class="note">{{day $r.Longest.On}} &middot; {{mpg $r.Longest.MPG}} mpg</span>
     </div>
@@ -212,10 +494,34 @@
       <span class="note">{{day $r.Cheapest.On}} at {{station $r.Cheapest.Station}}</span>
     </div>
     <div class="tile">
-      <span class="label">Dearest gallon</span>
-      <span class="value">{{money $r.Dearest.PricePerGallonCents}}</span>
-      <span class="note">{{day $r.Dearest.On}} at {{station $r.Dearest.Station}}</span>
+      <span class="label">Most expensive gallon</span>
+      <span class="value">{{money $r.MostExpensive.PricePerGallonCents}}</span>
+      <span class="note">{{day $r.MostExpensive.On}} at {{station $r.MostExpensive.Station}}</span>
     </div>
+    {{if $r.CostliestMonth.TotalCents}}
+      <div class="tile warn">
+        <span class="label">Priciest month</span>
+        <span class="value">{{money $r.CostliestMonth.TotalCents}}</span>
+        <span class="note">
+          {{$r.CostliestMonth.Month}} {{$r.CostliestMonth.Year}} &middot;
+          {{money $r.CostliestMonth.FuelCents}} gas, {{money $r.CostliestMonth.ServiceCents}} shop
+        </span>
+      </div>
+    {{end}}
+    {{if $r.FarthestMonth.Miles}}
+      <div class="tile">
+        <span class="label">Farthest month</span>
+        <span class="value">{{miles $r.FarthestMonth.Miles}}</span>
+        <span class="note">miles &middot; {{$r.FarthestMonth.Month}} {{$r.FarthestMonth.Year}}</span>
+      </div>
+    {{end}}
+    {{if .Report.Shop.Visits}}
+      <div class="tile">
+        <span class="label">Most expensive visit</span>
+        <span class="value">{{money $r.BiggestService.CostCents}}</span>
+        <span class="note">{{day $r.BiggestService.On}} at {{station $r.BiggestService.Shop}}</span>
+      </div>
+    {{end}}
   </div>
 
   <div class="tiles" style="margin-bottom:0">
@@ -232,7 +538,17 @@
     <div class="tile">
       <span class="label">Usual fill</span>
       <span class="value">{{one $r.AvgGallons}}</span>
-      <span class="note">gallons, {{dollars $r.AvgFillCents}} a time</span>
+      <span class="note">gallons, {{dollars $r.AvgFillCents}} each</span>
+    </div>
+    <div class="tile">
+      <span class="label">Gallons per 100 miles</span>
+      <span class="value">{{one $s.GallonsPer100Miles}}</span>
+      <span class="note">{{dollars $s.FuelPer100Miles}} of gas every 100 miles</span>
+    </div>
+    <div class="tile">
+      <span class="label">CO&#8322; burned</span>
+      <span class="value">{{tons $s.CO2Pounds}}</span>
+      <span class="note">short tons &middot; {{whole $s.CO2Pounds}} lb, at 19.6 lb a gallon</span>
     </div>
   </div>
 </div>
@@ -256,7 +572,7 @@
         <span class="note">{{share $s.SavedPercent}} of what it would have cost</span>
       </div>
       <div class="tile">
-        <span class="label">Paid a gallon</span>
+        <span class="label">Paid per gallon</span>
         <span class="value">{{dollars $s.AvgPriceCents}}</span>
         <span class="note">against {{dollars $s.AvgPumpCents}} at the pump</span>
       </div>

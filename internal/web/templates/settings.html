@@ -51,8 +51,8 @@
 
     <h3>Where the clock started</h3>
     <p class="small muted">
-      Total miles, cost a day and cost a month are all measured from these two. Without them the site can still
-      show you what the fuel cost; it cannot tell you what the car costs.
+      Total miles, cost per day and cost per month are all measured from these two. Without them the site can
+      still show you what the fuel cost; it cannot tell you what the car costs.
     </p>
     <div class="grid">
       <div class="field">
@@ -90,7 +90,7 @@
         <input id="soldodometer" type="number" name="soldodometer" min="0" step="1" value="{{if $v.SoldOdometer}}{{$v.SoldOdometer}}{{end}}">
       </div>
       <div class="field">
-        <label for="soldprice">What it fetched</label>
+        <label for="soldprice">What it sold for</label>
         <input id="soldprice" type="text" name="soldprice" inputmode="decimal" value="{{moneyInput $v.SoldPriceCents}}">
       </div>
     </div>
@@ -147,7 +147,7 @@
   <h2>Deleting it</h2>
   <p class="small muted">
     This removes the vehicle and every fill-up and shop visit logged against it. There is no undo and no export
-    on the way out - take a copy from the fuel log first if you want one.
+    on the way out - copy what you want out of the fuel log first.
   </p>
   <form method="post" action="/vehicle/{{$v.Slug}}/delete"
         data-confirm="Delete {{$v.Called}} and all {{count .Report.Summary.Fills}} fill-ups and {{count .Report.Shop.Visits}} shop visits? This cannot be undone.">

@@ -2,7 +2,7 @@
 <div class="pagehead">
   <div>
     <h1>The garage</h1>
-    <p class="sub">Every vehicle you own or have been shared on.</p>
+    <p class="sub">Every vehicle you own, and every one shared with you.</p>
   </div>
   <span class="spacer"></span>
   {{if not .ViewOnly}}
@@ -30,11 +30,11 @@
             <dd>{{mpg .Summary.MeasuredMPG}}</dd>
           </div>
           <div>
-            <dt>Cost a mile</dt>
+            <dt>Cost per mile</dt>
             <dd>{{cents .Summary.TotalPerMile}}</dd>
           </div>
           <div>
-            <dt>Cost a month</dt>
+            <dt>Cost per month</dt>
             <dd>{{dollars .Summary.TotalPerMonth}}</dd>
           </div>
         </dl>
