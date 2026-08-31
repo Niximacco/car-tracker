@@ -64,6 +64,11 @@
   --line-paid: #1d4e77;
   --line-pump: #8b95a1;
   --line-cost: #1c6b39;
+  --line-permile: #6b3fa0;
+  --line-fuel: #1d4e77;
+  --line-shop: #a3182b;
+  --line-miles: #0f6674;
+  --line-running: #1c6b39;
   --grid: #e0e4e9;
 
   --r-sm: 8px;
@@ -128,6 +133,11 @@
     --line-paid: #5aa9e6;
     --line-pump: #6f7b88;
     --line-cost: #6ec994;
+    --line-permile: #b48ae0;
+    --line-fuel: #5aa9e6;
+    --line-shop: #f2808f;
+    --line-miles: #5ec8d8;
+    --line-running: #6ec994;
     --grid: #262d37;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -153,15 +163,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Signed out pages are a single centred card; signed in pages are a page. */
-body.centred {
+/* Signed out pages are a single centered card; signed in pages are a page. */
+body.centered {
   display: flex;
   align-items: center;
   justify-content: center;
   padding-bottom: var(--gutter);
 }
 
-body.centred main {
+body.centered main {
   width: 100%;
   max-width: 440px;
   margin: 0 auto;
@@ -614,6 +624,7 @@ tr.bad td { background: var(--error-bg); }
 }
 
 .barcell .fill.warm { background: var(--amber-bg); }
+.barcell .fill.cool { background: var(--green-bg); }
 .barcell span { position: relative; }
 
 /* ---------------------------------------------------------------- chart */
@@ -660,6 +671,11 @@ tr.bad td { background: var(--error-bg); }
 .chart .paid { stroke: var(--line-paid); }
 .chart .pump { stroke: var(--line-pump); }
 .chart .cost { stroke: var(--line-cost); }
+.chart .permile { stroke: var(--line-permile); }
+.chart .fuel { stroke: var(--line-fuel); }
+.chart .shop { stroke: var(--line-shop); }
+.chart .miles { stroke: var(--line-miles); }
+.chart .running { stroke: var(--line-running); }
 
 .chart circle {
   r: 2.6;
@@ -670,6 +686,11 @@ tr.bad td { background: var(--error-bg); }
 .chart circle.mpg { fill: var(--line-mpg); stroke: var(--surface); }
 .chart circle.paid { fill: var(--line-paid); stroke: var(--surface); }
 .chart circle.cost { fill: var(--line-cost); stroke: var(--surface); }
+.chart circle.permile { fill: var(--line-permile); stroke: var(--surface); }
+.chart circle.fuel { fill: var(--line-fuel); stroke: var(--surface); }
+.chart circle.shop { fill: var(--line-shop); stroke: var(--surface); }
+.chart circle.miles { fill: var(--line-miles); stroke: var(--surface); }
+.chart circle.running { fill: var(--line-running); stroke: var(--surface); }
 
 .chart circle:hover { r: 5; }
 
@@ -700,6 +721,11 @@ tr.bad td { background: var(--error-bg); }
 .legend .paid { color: var(--line-paid); }
 .legend .pump { color: var(--line-pump); }
 .legend .cost { color: var(--line-cost); }
+.legend .permile { color: var(--line-permile); }
+.legend .fuel { color: var(--line-fuel); }
+.legend .shop { color: var(--line-shop); }
+.legend .miles { color: var(--line-miles); }
+.legend .running { color: var(--line-running); }
 .legend .name { color: var(--muted); }
 
 /* ---------------------------------------------------------------- forms */

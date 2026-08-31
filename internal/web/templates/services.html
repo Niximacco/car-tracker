@@ -3,7 +3,7 @@
 <div class="pagehead">
   <div>
     <h1>{{$v.Called}} &middot; service history</h1>
-    <p class="sub">{{count $shop.Visits}} visits, {{money $shop.TotalCents}}{{if $shop.Visits}}, {{money $shop.AvgCents}} a visit{{end}}</p>
+    <p class="sub">{{count $shop.Visits}} visits, {{money $shop.TotalCents}}{{if $shop.Visits}}, {{money $shop.AvgCents}} per visit{{end}}</p>
   </div>
   <span class="spacer"></span>
   {{if $can}}<a class="btn primary" href="#add"><i class="ico fa-solid fa-plus" aria-hidden="true"></i>Log a service</a>{{end}}
@@ -16,7 +16,7 @@
     <div class="tile">
       <span class="label">Spent at the shop</span>
       <span class="value">{{money $shop.TotalCents}}</span>
-      <span class="note">{{cents $s.ServicePerMile}} a mile</span>
+      <span class="note">{{cents $s.ServicePerMile}} per mile</span>
     </div>
     <div class="tile">
       <span class="label">Usual gap</span>
@@ -35,7 +35,7 @@
       </div>
     {{end}}
     <div class="tile">
-      <span class="label">Dearest single visit</span>
+      <span class="label">Most expensive visit</span>
       <span class="value">{{money .Report.Records.BiggestService.CostCents}}</span>
       <span class="note">{{day .Report.Records.BiggestService.On}}</span>
     </div>
@@ -105,7 +105,7 @@
 {{else}}
   <div class="empty">
     <h2>No service history yet</h2>
-    <p>Every invoice with an odometer reading on it makes the next one predictable.</p>
+    <p>Every receipt with an odometer reading on it makes the next one predictable.</p>
   </div>
 {{end}}
 
@@ -139,12 +139,12 @@
     </div>
 
     <div class="field" style="margin-top:14px">
-      <label for="work">Work done <span class="hint">one item a line, the way the invoice lists them</span></label>
+      <label for="work">Work done <span class="hint">one item per line, the way the receipt lists them</span></label>
       <textarea id="work" name="work" placeholder="Oil change&#10;Tire rotation&#10;Cabin / pollen filter">{{.Service.Work}}</textarea>
     </div>
 
     <div class="field">
-      <label for="note">Note <span class="hint">warranty, part numbers, what they said about the tyres</span></label>
+      <label for="note">Note <span class="hint">warranty, part numbers, what they said about the tires</span></label>
       <input id="note" type="text" name="note" value="{{.Service.Note}}">
     </div>
 

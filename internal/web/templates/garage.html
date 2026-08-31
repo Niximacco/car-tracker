@@ -3,7 +3,7 @@
   <div>
     <h1>The garage</h1>
     <p class="sub">
-      Every vehicle you own or have been shared on.{{if .You.DefaultVehicle}} Opening the site goes straight to your default.{{end}}
+      Every vehicle you own, and every one shared with you.{{if .You.DefaultVehicle}} Opening the site goes straight to your default.{{end}}
     </p>
   </div>
   <span class="spacer"></span>
@@ -34,11 +34,11 @@
               <dd>{{mpg .Summary.MeasuredMPG}}</dd>
             </div>
             <div>
-              <dt>Cost a mile</dt>
+              <dt>Cost per mile</dt>
               <dd>{{cents .Summary.TotalPerMile}}</dd>
             </div>
             <div>
-              <dt>Cost a month</dt>
+              <dt>Cost per month</dt>
               <dd>{{dollars .Summary.TotalPerMonth}}</dd>
             </div>
           </dl>

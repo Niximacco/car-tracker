@@ -113,12 +113,12 @@
                value="{{if .Fillup.Gallons}}{{gallons .Fillup.Gallons}}{{end}}" required>
       </div>
       <div class="field">
-        <label for="price">Price a gallon <span class="hint">what you actually paid</span></label>
+        <label for="price">Price per gallon <span class="hint">what you actually paid</span></label>
         <input id="price" type="text" name="price" inputmode="decimal" placeholder="3.29"
                value="{{moneyInput .Fillup.PricePerGallonCents}}" required>
       </div>
       <div class="field">
-        <label for="saver">Fuel saver a gallon <span class="hint">what came off the sign price</span></label>
+        <label for="saver">Fuel saver per gallon <span class="hint">what came off the sign price</span></label>
         <input id="saver" type="text" name="saver" inputmode="decimal" placeholder="0.00"
                value="{{moneyInput .Fillup.FuelSaverCents}}">
       </div>
@@ -131,7 +131,7 @@
       </div>
       <div class="field">
         <label for="cost">Total <span class="hint">only if it isn't gallons &times; price</span></label>
-        <input id="cost" type="text" name="cost" inputmode="decimal" placeholder="worked out"
+        <input id="cost" type="text" name="cost" inputmode="decimal" placeholder="calculated"
                value="{{moneyInput .Fillup.CostCents}}">
       </div>
     </div>
@@ -143,7 +143,7 @@
 
     <div class="check">
       <input id="partial" type="checkbox" name="partial" value="1" {{if .Fillup.Partial}}checked{{end}}>
-      <label for="partial">Partial fill &mdash; I didn't fill the tank. The gallons and the cost still count; no mpg is worked out from it.</label>
+      <label for="partial">Partial fill &mdash; I didn't fill the tank. The gallons and the cost still count; no mpg is calculated from it.</label>
     </div>
     <div class="check">
       <input id="missed" type="checkbox" name="missed" value="1" {{if .Fillup.Missed}}checked{{end}}>

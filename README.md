@@ -38,7 +38,7 @@ inside itself as two csv files — so a deploy is one container and there is not
 ## The idea
 
 **Store what was observed. Work out everything else.** A fill-up holds what you could read at the
-pump: the day, the odometer, the gallons, the price a gallon, and whatever came off it. It does not
+pump: the day, the odometer, the gallons, the price per gallon, and whatever came off it. It does not
 hold the miles covered, the miles per gallon, what the tank cost, or the running total — every one of
 those depends on the fill-up *before* it, and a stored number that depends on a neighbour is a number
 that goes quietly wrong the moment a forgotten fill-up is added in the middle. Sixty-seven rows is
@@ -72,7 +72,7 @@ what the car costs, and it says so on the page rather than dividing by nothing.
 
 **Miles are divided by a different denominator than money.** The odometer is only known up to the last
 entry, so miles a day is the distance over the days *to that reading*. The money genuinely was spent
-across the whole time you have owned it, so cost a day is over the days you have owned it. The sheet
+across the whole time you have owned it, so cost per day is over the days you have owned it. The sheet
 did exactly this — it is the one place its two denominators differ — and it was right to. Dividing the
 distance by the days since the last fill as well would report a car that has been sitting still for a
 fortnight as one that covers less ground.
@@ -111,11 +111,11 @@ not is worth more here than a page that never reloads.
 
 | | |
 |---|---|
-| **Garage** | Every car you own or have been shared on, with its odometer, its mpg, and what it costs a mile and a month — and on each card, a button straight to logging a fill-up or a service, and the star that makes that car the one the site opens on |
-| **Overview** | The block from the bottom of the spreadsheet, three charts, and the last few entries of each kind |
-| **Fuel log** | The whole history, with the sheet's own columns — including the running total, days owned and cost a day the sheet had headings for and never filled in — and the form that adds to it |
-| **Service** | Every visit, the work as the invoice listed it, the usual interval between visits, and how far it is been since the oil was done |
-| **Insights** | Year by year, the weather, where you buy fuel, the extremes, and what the discount has been worth |
+| **Garage** | Every car you own, and every one shared with you, with its odometer, its mpg, and what it costs per mile and per month — and on each card, a button straight to logging a fill-up or a service, and the star that makes that car the one the site opens on |
+| **Overview** | The block from the bottom of the spreadsheet, what the car costs per month split into gas and maintenance, four charts, and the last few entries of each kind |
+| **Fuel log** | The whole history, with the sheet's own columns — including the running total, days owned and cost per day the sheet had headings for and never filled in — and the form that adds to it |
+| **Service** | Every visit, the work as the receipt listed it, the usual interval between visits, and how far it has been since the oil was done |
+| **Insights** | Year by year and month by month, how much it varies, which way it is going, the weather, where you buy gas, when you stop for it, the extremes, and what the discount has been worth |
 | **Import** | A paste, or four years of the original sheet, previewed row by row before anything is written |
 | **Settings** | What the car is, where the clock started, who can see it, and how to delete it |
 | **Access** | Who may sign in, and what they may do |
@@ -130,10 +130,24 @@ Everything the sheet computed is here, in the order it had it. These are the one
 - **Where you buy fuel.** Every station with its share of your fill-ups, what you have paid there a
   gallon, what the sign said, and what the discount saved. The price column is exactly what it looks
   like; the mpg column mostly says something about the roads you are on when you stop somewhere.
-- **Year by year.** Miles, gallons, mpg, price a gallon, fuel, shop, and what the discount saved,
+- **Year by year.** Miles, gallons, mpg, price per gallon, fuel, shop, and what the discount saved,
   with the total drawn as a bar so a bad year is visible without reading.
-- **The extremes.** Best and worst tank, cheapest and dearest gallon, furthest on one tank, longest a
-  tank has lasted, biggest fill — and the averages they are extreme against.
+- **Month by month.** The same again at the resolution the spending actually happens at, gaps
+  included: a month you did not fill up in is a row of nothing rather than a row that is missing,
+  because a line that skips it draws a flat stretch where there should be a dip.
+- **How much it varies.** The median tank, the standard deviation, the band eight tanks in ten fall
+  inside, and the same three for what a gallon has cost. An average cannot tell a car that returns 34
+  every time from one that alternates 29 and 39, and those are different cars to own.
+- **Which way it is going.** A least-squares line fitted through every measured tank, in miles per
+  gallon per year, and another through the price paid. Beside them, the last twelve months held
+  against the twelve before them for spending, distance and economy. A car quietly losing half a mile
+  per gallon a year is invisible in a column that bounces four either side of the average every winter.
+- **When you stop for gas.** Which day of the week, what share of it is a weekend, and — for the
+  fill-ups that carry a clock — what time of day. A fact about your week rather than about the car,
+  and the only place the log knows it.
+- **The extremes.** Best and worst tank, cheapest and most expensive gallon, farthest on one tank,
+  longest a tank has lasted, biggest fill, the priciest month and the farthest — and the averages they
+  are extreme against.
 - **If nothing changes.** Where the odometer probably is *today* rather than at the last entry, when
   the next fill-up is due, where the clock will be in a year, and what the next twelve months cost at
   the rate of the last twelve. All of it labelled as what it is.
@@ -142,11 +156,15 @@ Everything the sheet computed is here, in the order it had it. These are the one
   was in for something else does not lower the expectation for good. It is measured against the
   *estimated* odometer, so "due in 400 miles" means something between fill-ups.
 - **Cost of ownership**, kept deliberately separate from cost of running. What the car cost, less what
-  it fetched, plus everything spent on it. It only appears when the purchase price is on file, because
+  it sold for, plus everything spent on it. It only appears when the purchase price is on file, because
   a zero would read as a car that was free.
-- **Three charts**: every tank's mpg with a five-fill average through it, what a gallon cost both ways
-  with the discount as the gap between the lines, and the running cost a day — which is meant to
-  flatten out, and where a step is a big invoice.
+- **What it uses**, as opposed to what it costs: gallons per hundred miles, which is the figure the
+  money scales with in a way miles per gallon does not; how far a full tank goes; and the carbon in
+  the gasoline that has been burned, at the EPA's 19.6 pounds a gallon.
+- **Seven charts.** On the overview: every tank's mpg with a five-fill average through it, what a
+  gallon cost both ways with the discount as the gap between the lines, and the running cost per day
+  beside the running cost per mile. On the insights page: where the money went month by month with the
+  shop drawn apart from the gas, how far the car went each month, and everything spent adding up.
 
 ## Bringing the spreadsheet in
 
@@ -277,6 +295,13 @@ the lines take their colours from the same css variables the rest of the page do
 right in both light and dark without being drawn twice, and the arithmetic behind every line is
 somewhere a test can reach it.
 
+The two running-cost charts leave their settling-in period off the front. A tank of gas divided by the
+four days you had owned the car is not a fact about the car, and drawn to scale it puts the next four
+years in the bottom eighth of the box. The band a reading has to be inside is Tukey's — the middle
+half of the column, opened out by one and a half times its own width — and only the front of the line
+is trimmed, so a step later on, which is what a transmission looks like, is never dropped. Nothing is
+dropped quietly either: the chart carries the count and the page underneath says how many.
+
 The vertical axis of those charts does not start at zero, deliberately. These are fuel figures in the
 thirties and prices between one and five dollars; an axis from zero would flatten every one of them
 into a line near the top of the box. They are charts of how something changed, and both ends are
@@ -375,6 +400,12 @@ They are the parts that are painful to debug in production, and nothing that nee
 - **The chart geometry.** Points inside the box, a gap breaking the line rather than being drawn
   through, a flat series not dividing by a range of nothing, and sixty-seven readings not producing
   sixty-seven axis labels.
+- **The shape of the history**, which is the arithmetic that describes the numbers rather than adding
+  them up: a month nothing happened in still being a month, a month's mpg counting only the tanks that
+  can carry one, the spread refusing to describe two readings, the fitted slope finding a car that is
+  getting worse, the year-on-year comparison waiting for a year to compare against, the monthly bill
+  dividing by the days it actually covers, and the outlier fences catching the settling-in period
+  while leaving the ordinary spread alone.
 
 ## Deploying
 

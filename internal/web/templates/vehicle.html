@@ -1,5 +1,5 @@
 {{define "content"}}
-{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$o := .Report.Outlook}}{{$shop := .Report.Shop}}
+{{$v := .Vehicle}}{{$s := .Report.Summary}}{{$o := .Report.Outlook}}{{$shop := .Report.Shop}}{{$t := .Report.Trend}}{{$sp := .Report.Spread}}
 <div class="pagehead">
   <div>
     <h1>{{$v.Called}}</h1>
@@ -52,7 +52,7 @@
   <div class="tile accent">
     <span class="label">Total miles</span>
     <span class="value">{{miles $s.TotalMiles}}</span>
-    <span class="note">{{one $s.MilesPerDay}} a day</span>
+    <span class="note">{{one $s.MilesPerDay}} per day &middot; {{whole $s.MilesPerYear}} per year</span>
   </div>
   <div class="tile">
     <span class="label">Odometer</span>
@@ -67,7 +67,7 @@
   <div class="tile">
     <span class="label">Total gallons</span>
     <span class="value">{{gallons $s.TotalGallons}}</span>
-    <span class="note">{{dollars $s.AvgPriceCents}} a gallon average</span>
+    <span class="note">{{dollars $s.AvgPriceCents}} per gallon average</span>
   </div>
   <div class="tile">
     <span class="label">Days owned</span>
@@ -75,6 +75,56 @@
     <span class="note">{{days $s.DaysOwned}}</span>
   </div>
 </div>
+
+<!-- ------------------------------------------------------- what it costs -->
+{{if $s.Owned}}
+  <div class="card">
+    <div class="head">
+      <h2>What this car costs per month</h2>
+      <span class="spacer"></span>
+      <span class="pill accent">{{dollars $s.TotalPerMonth}} per month</span>
+    </div>
+    <p class="small muted">
+      Everything spent on it, divided by the {{days $s.DaysOwned}} you have owned it and scaled to an average
+      month. No single month looks like this - most are just gas, and one of them was a set of tires - but this
+      is the number to put in a budget.
+    </p>
+    <div class="tiles">
+      <div class="tile">
+        <span class="label">Fuel</span>
+        <span class="value">{{dollars $s.FuelPerMonth}}</span>
+        <span class="note">{{share $s.FuelShare}} of what it costs &middot; {{dollars $s.FuelPerDay}} per day</span>
+      </div>
+      <div class="tile">
+        <span class="label">Maintenance</span>
+        <span class="value">{{dollars $s.ServicePerMonth}}</span>
+        <span class="note">{{share $s.ServiceShare}} of what it costs &middot; {{dollars $s.ServicePerDay}} per day</span>
+      </div>
+      <div class="tile accent">
+        <span class="label">Both together</span>
+        <span class="value">{{dollars $s.TotalPerMonth}}</span>
+        <span class="note">{{dollars $s.TotalPerDay}} per day &middot; {{cents $s.TotalPerMile}} per mile</span>
+      </div>
+      {{if $t.RecentReady}}
+        <div class="tile">
+          <span class="label">Lately</span>
+          <span class="value">{{dollars $t.RecentPerMonth}}</span>
+          <span class="note">
+            {{if ge $t.RecentDays 365}}over the last twelve months{{else}}over the last {{days $t.RecentDays}}{{end}} &middot;
+            {{dollars $t.RecentFuelPerMonth}} gas, {{dollars $t.RecentServicePerMonth}} shop
+          </span>
+        </div>
+      {{end}}
+      {{if $s.HasPurchase}}
+        <div class="tile">
+          <span class="label">With the purchase price</span>
+          <span class="value">{{dollars $s.OwnershipPerMonth}}</span>
+          <span class="note">what it has cost to own, not just to run</span>
+        </div>
+      {{end}}
+    </div>
+  </div>
+{{end}}
 
 <div class="tiles">
   <div class="tile">
@@ -108,6 +158,38 @@
   {{end}}
 </div>
 
+<!-- What it uses, as opposed to what it costs. Gallons per hundred miles is
+     here rather than only on the insights page because it is the figure that
+     scales with the money, and the money is what this block is next to. -->
+{{if $s.MeasuredMPG}}
+  <div class="tiles">
+    <div class="tile">
+      <span class="label">Gallons per 100 miles</span>
+      <span class="value">{{one $s.GallonsPer100Miles}}</span>
+      <span class="note">{{dollars $s.FuelPer100Miles}} of gas every 100 miles</span>
+    </div>
+    {{if $s.TankRange}}
+      <div class="tile">
+        <span class="label">Range on a tank</span>
+        <span class="value">{{miles $s.TankRange}}</span>
+        <span class="note">{{gallons $v.TankGallons}} gallons at {{mpg $s.MeasuredMPG}} mpg</span>
+      </div>
+    {{end}}
+    {{if $sp.Ready}}
+      <div class="tile">
+        <span class="label">Typical tank</span>
+        <span class="value">{{mpg $sp.MPGMedian}}</span>
+        <span class="note">median &middot; give or take {{one $sp.MPGStdDev}} mpg</span>
+      </div>
+    {{end}}
+    <div class="tile">
+      <span class="label">CO&#8322; burned</span>
+      <span class="value">{{whole $s.CO2Pounds}}</span>
+      <span class="note">pounds &middot; about {{tons $s.CO2Pounds}} tons, at 19.6 lb a gallon</span>
+    </div>
+  </div>
+{{end}}
+
 <div class="card">
   <div class="head">
     <h2>Miles per gallon</h2>
@@ -121,36 +203,62 @@
   <p class="small muted">
     {{count $s.MeasuredFills}} of {{count $s.Fills}} fill-ups can carry an mpg figure. The rest are the first one,
     which has nothing behind it to measure against, and any marked as a partial fill or as having a gap before them.
+    {{if $sp.Ready}}
+      Eight tanks in ten land between {{mpg $sp.MPGLow}} and {{mpg $sp.MPGHigh}} mpg.
+    {{end}}
+  </p>
+</div>
+
+<div class="card">
+  <div class="head">
+    <h2>What a gallon cost</h2>
+    <span class="spacer"></span>
+    <p class="legend">
+      <span class="paid"><i></i><span class="name">Paid</span></span>
+      {{if $s.SavedCents}}<span class="pump"><i></i><span class="name">Pump</span></span>{{end}}
+    </p>
+  </div>
+  {{template "chart" .PriceChart}}
+  <p class="small muted">
+    Cheapest {{money .Report.Records.Cheapest.PricePerGallonCents}} on {{day .Report.Records.Cheapest.On}},
+    most expensive {{money .Report.Records.MostExpensive.PricePerGallonCents}} on {{day .Report.Records.MostExpensive.On}}.
+    {{if $sp.PriceReady}}
+      The last fill was {{price $sp.PriceNow}}, {{percent $sp.PriceVsAverage}} against the lifetime average.
+    {{end}}
   </p>
 </div>
 
 <div class="split">
   <div class="card">
     <div class="head">
-      <h2>What a gallon cost</h2>
-      <span class="spacer"></span>
-      <p class="legend">
-        <span class="paid"><i></i><span class="name">Paid</span></span>
-        {{if $s.SavedCents}}<span class="pump"><i></i><span class="name">Pump</span></span>{{end}}
-      </p>
-    </div>
-    {{template "chart" .PriceChart}}
-    <p class="small muted">
-      Cheapest {{money .Report.Records.Cheapest.PricePerGallonCents}} on {{day .Report.Records.Cheapest.On}},
-      dearest {{money .Report.Records.Dearest.PricePerGallonCents}} on {{day .Report.Records.Dearest.On}}.
-    </p>
-  </div>
-
-  <div class="card">
-    <div class="head">
-      <h2>Cost a day, running</h2>
+      <h2>Cost per day, running</h2>
       <span class="spacer"></span>
       <p class="legend"><span class="cost"><i></i><span class="name">Fuel and maintenance</span></span></p>
     </div>
     {{template "chart" .CostChart}}
     <p class="small muted">
       Everything spent so far, divided by the days you have had it. It is meant to flatten out;
-      a step in it is a big invoice.
+      a step in it is a big bill.
+      {{if .CostChart.Trimmed}}
+        The first {{count .CostChart.Trimmed}} readings are left off - a set of tires divided by three weeks of
+        ownership is a number that would flatten everything after it.
+      {{end}}
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <h2>Cost per mile, running</h2>
+      <span class="spacer"></span>
+      <p class="legend"><span class="permile"><i></i><span class="name">Fuel and maintenance</span></span></p>
+    </div>
+    {{template "chart" .PerMileChart}}
+    <p class="small muted">
+      The same money against distance instead of time. This is the line that does not move when your commute
+      does: two months of not driving lower the cost per day of a car that costs exactly the same per mile.
+      {{if .PerMileChart.Trimmed}}
+        The first {{count .PerMileChart.Trimmed}} readings are left off for the same reason as the chart beside it.
+      {{end}}
     </p>
   </div>
 </div>
