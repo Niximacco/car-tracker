@@ -1,7 +1,18 @@
 {{define "content"}}
 <h1><i class="ico fa-solid fa-envelope-open-text" aria-hidden="true"></i> Check your email</h1>
-<p>If <strong>{{.Email}}</strong> can sign in here, a link is on its way.</p>
-<p class="muted small">It works once and expires in {{.ExpiresMinutes}} minutes.</p>
+<p>If <strong>{{.Email}}</strong> can sign in here, a link is on its way, with a code you can enter below instead.</p>
+<p class="muted small">Either one works once, and both expire in {{.ExpiresMinutes}} minutes.</p>
+<form method="post" action="/login/code">
+  <input type="hidden" name="email" value="{{.Email}}">
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="field">
+    <label for="code">Code from the email</label>
+    <input id="code" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]*" maxlength="9" placeholder="123456" autofocus required>
+  </div>
+  <div class="actions">
+    <button class="primary" type="submit"><i class="ico fa-solid fa-right-to-bracket" aria-hidden="true"></i>Sign in</button>
+  </div>
+</form>
 <div class="actions">
   <form method="get" action="/login"><button type="submit">Try another address</button></form>
 </div>
