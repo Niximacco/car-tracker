@@ -41,6 +41,7 @@ func TestTheWholeRouteSetRegistersAndResolves(t *testing.T) {
 	r.GET("/login", mark("login"))
 	r.POST("/login", mark("request"))
 	r.GET("/auth/callback", mark("complete"))
+	r.POST("/login/code", mark("code"))
 	r.POST("/logout", mark("logout"))
 	r.GET("/api/auth/session", mark("session"))
 
@@ -94,6 +95,7 @@ func TestTheWholeRouteSetRegistersAndResolves(t *testing.T) {
 		{http.MethodGet, "/static/app.a1b2c3d4e5.css", "asset"},
 		{http.MethodGet, "/login", "login"},
 		{http.MethodGet, "/auth/callback", "complete"},
+		{http.MethodPost, "/login/code", "code"},
 
 		// The pair this test exists for. "/vehicles/new" must not be read as a
 		// vehicle called "new" under a slug parameter, and a vehicle whose slug

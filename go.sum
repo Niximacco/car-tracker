@@ -8,8 +8,8 @@ cloud.google.com/go/compute/metadata v0.9.0 h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdB
 cloud.google.com/go/compute/metadata v0.9.0/go.mod h1:E0bWwX5wTnLPedCKqk3pJmVgCBSM6qQI1yTBdEb3C10=
 cloud.google.com/go/datastore v1.26.0 h1:9lgjj+DRv5Ay/tQ+vk9Ryz/G84ncnfwRC0RuHUGZm0U=
 cloud.google.com/go/datastore v1.26.0/go.mod h1:jvJVNe+S2nHVIndV1H/B4s9K3MLsTMqOKlxSrzHTxB4=
-github.com/Niximacco/ajn_auth v0.1.0 h1:jIM8HfK+bJLM75c2AX4csX5ybu+prlHDmqqKSW+DTPs=
-github.com/Niximacco/ajn_auth v0.1.0/go.mod h1:t+Ra+pjg2mBTLx4YtFos9Kp5IJp/kVjDEucmyMuBYhY=
+github.com/Niximacco/ajn_auth v0.2.0 h1:JLINDaKh0azy3r3rrKlsDaXecGqKuXVDeJ1gulvl6eQ=
+github.com/Niximacco/ajn_auth v0.2.0/go.mod h1:t+Ra+pjg2mBTLx4YtFos9Kp5IJp/kVjDEucmyMuBYhY=
 github.com/bytedance/gopkg v0.1.3 h1:TPBSwH8RsouGCBcMBktLt1AymVo2TVsBVCY4b6TnZ/M=
 github.com/bytedance/gopkg v0.1.3/go.mod h1:576VvJ+eJgyCzdjS+c4+77QF3p7ubbtiKARP3TxducM=
 github.com/bytedance/sonic v1.15.0 h1:/PXeWFaR5ElNcVE84U0dOHjiMHQOwNIx3K4ymzh/uSE=
