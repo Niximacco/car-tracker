@@ -1,5 +1,5 @@
 # Builds a container, pushes it to Google Artifact Registry, and deploys it to
-# Cloud Run when a commit lands on main.
+# the pillar-of-autumn host when a commit lands on main.
 #
 # There is deliberately nothing to deploy but the container. The service renders
 # its own pages from templates compiled into the binary, the stylesheet is
@@ -12,27 +12,22 @@
 #
 # To configure this workflow:
 #
-# 1. Enable the APIs:
-#      Cloud Run          run.googleapis.com
-#      Artifact Registry  artifactregistry.googleapis.com
-#      Datastore          datastore.googleapis.com
+# 1. The Artifact Registry repository named by SERVICE below, in GAR_LOCATION.
 #
-# 2. Create the Artifact Registry repository named by SERVICE below, in
-#    GAR_LOCATION.
-#
-# 3. Add two repository secrets (these are identifiers, not credentials):
+# 2. Two repository secrets (these are identifiers, not credentials):
 #      WIF_PROVIDER         the full workloadIdentityPools/.../providers/... name
 #      WIF_SERVICE_ACCOUNT  the deploy service account email
-#    and bind this repo to that service account with roles/iam.workloadIdentityUser
-#    on the principalSet for attribute.repository/<owner>/<repo>. The deploy
-#    account needs roles/run.admin (or run.developer), roles/artifactregistry.writer,
-#    and roles/iam.serviceAccountUser on the runtime service account. See the
-#    README for the exact commands.
+#    with this repository bound to that account by roles/iam.workloadIdentityUser
+#    on the principalSet for attribute.repository/<owner>/<repo>. The account
+#    needs roles/artifactregistry.writer to push, and has to be one of the
+#    DEPLOYERS the host accepts in order to deploy.
 #
-# 4. The Cloud Run service's own runtime service account needs
-#    roles/datastore.user, and access to the secrets listed in the README.
+# 3. Everything about how the service runs - its environment, its secrets, the
+#    domains in front of it, its memory limit and the permissions it runs with -
+#    is in Niximacco/pillar-of-autumn (host/compose.yaml, host/secrets.json,
+#    host/Caddyfile and terraform/), under the name in SERVICE below.
 
-name: Build and Deploy to Cloud Run
+name: Build and Deploy
 
 on:
   push:
@@ -42,7 +37,6 @@ env:
   PROJECT_ID: ajnhosting-163818
   GAR_LOCATION: us-central1
   SERVICE: car-tracker
-  REGION: us-central1
 
 jobs:
   test:
@@ -110,13 +104,28 @@ jobs:
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
 
-      - name: Deploy to Cloud Run
-        id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2
+      # An identity token for ops.ajn.me, minted as the same deploy account that
+      # just pushed the image. The host accepts it only from that account and
+      # only for that audience, and it expires within the hour - so there is no
+      # deploy secret to keep in this repository.
+      - name: Deploy Token
+        id: deploy-token
+        uses: 'google-github-actions/auth@v2'
         with:
-          service: ${{ env.SERVICE }}
-          region: ${{ env.REGION }}
-          image: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/${{ env.SERVICE }}:${{ github.sha }}
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+          token_format: 'id_token'
+          id_token_audience: 'https://ops.ajn.me'
+          id_token_include_email: true
 
-      - name: Show Output
-        run: echo ${{ steps.deploy.outputs.url }}
+      # The host pulls this build, recreates the container on it and waits for
+      # it to report healthy. If it does not, the previous build goes back and
+      # this step fails - a broken build is a red check on the commit that broke
+      # it, with the site still up on the one before.
+      - name: Deploy to pillar-of-autumn
+        run: |-
+          curl --fail-with-body --silent --show-error --max-time 300 \
+            -X POST https://ops.ajn.me/api/deploy \
+            -H "Authorization: Bearer ${{ steps.deploy-token.outputs.id_token }}" \
+            -H "Content-Type: application/json" \
+            -d '{"service": "${{ env.SERVICE }}", "tag": "${{ github.sha }}"}'
