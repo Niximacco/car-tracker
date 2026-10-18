@@ -1,0 +1,134 @@
+{
+  "service": "car-tracker",
+  "workload": {
+    "image": "us-central1-docker.pkg.dev/ajnhosting-163818/car-tracker/car-tracker",
+    "repo": "Niximacco/car-tracker",
+    "port": 8080,
+    "domains": [
+      "cars.ajn.me"
+    ],
+    "dns": true,
+    "health_path": "/healthz",
+    "memory_mib": 128,
+    "env": {
+      "DATASTORE_PROJECT_ID": "ajnhosting-163818",
+      "FONTAWESOME_KIT": "df88468b70",
+      "AJN_AUTH_URL": "https://auth.ajn.me",
+      "DATASTORE_NAMESPACE": "cartracker",
+      "APP_BASE_URL": "https://cars.ajn.me",
+      "SITE_NAME": "Car Tracker",
+      "BOOTSTRAP_ADMIN_EMAIL": "ajn0592@gmail.com",
+      "BOOTSTRAP_ADMIN_NAME": "Anthony",
+      "GOMEMLIMIT": "100MiB"
+    },
+    "secrets": {
+      "JWT_SIGNING_KEY": "jwt_signing_key",
+      "AJN_AUTH_API_KEY": "car-tracker-ajn-auth-api-key"
+    },
+    "database": {
+      "tables": {
+        "users": {
+          "columns": [
+            {"name": "email", "type": "text", "not_null": true},
+            {"name": "name", "type": "text", "not_null": true, "default": ""},
+            {"name": "created", "type": "integer", "not_null": true, "default": 0},
+            {"name": "last_login", "type": "integer", "not_null": true, "default": 0},
+            {"name": "admin", "type": "integer", "not_null": true, "default": 0},
+            {"name": "view_only", "type": "integer", "not_null": true, "default": 0},
+            {"name": "disabled", "type": "integer", "not_null": true, "default": 0},
+            {"name": "default_vehicle", "type": "text", "not_null": true, "default": ""}
+          ],
+          "primary_key": ["email"]
+        },
+        "vehicles": {
+          "columns": [
+            {"name": "slug", "type": "text", "not_null": true},
+            {"name": "name", "type": "text", "not_null": true, "default": ""},
+            {"name": "year", "type": "integer", "not_null": true, "default": 0},
+            {"name": "make", "type": "text", "not_null": true, "default": ""},
+            {"name": "model", "type": "text", "not_null": true, "default": ""},
+            {"name": "trim", "type": "text", "not_null": true, "default": ""},
+            {"name": "plate", "type": "text", "not_null": true, "default": ""},
+            {"name": "vin", "type": "text", "not_null": true, "default": ""},
+            {"name": "owner", "type": "text", "not_null": true, "default": ""},
+            {"name": "shared_with", "type": "text", "not_null": true, "default": "[]"},
+            {"name": "purchased_on", "type": "text", "not_null": true, "default": ""},
+            {"name": "purchase_odometer", "type": "integer", "not_null": true, "default": 0},
+            {"name": "purchase_price_cents", "type": "integer", "not_null": true, "default": 0},
+            {"name": "tank_gallons", "type": "real", "not_null": true, "default": 0},
+            {"name": "retired", "type": "integer", "not_null": true, "default": 0},
+            {"name": "sold_on", "type": "text", "not_null": true, "default": ""},
+            {"name": "sold_odometer", "type": "integer", "not_null": true, "default": 0},
+            {"name": "sold_price_cents", "type": "integer", "not_null": true, "default": 0},
+            {"name": "created", "type": "integer", "not_null": true, "default": 0},
+            {"name": "updated", "type": "integer", "not_null": true, "default": 0}
+          ],
+          "primary_key": ["slug"]
+        },
+        "fillups": {
+          "columns": [
+            {"name": "vehicle", "type": "text", "not_null": true, "references": "vehicles.slug", "on_delete": "cascade"},
+            {"name": "id", "type": "text", "not_null": true},
+            {"name": "on_date", "type": "text", "not_null": true, "default": ""},
+            {"name": "at", "type": "text", "not_null": true, "default": ""},
+            {"name": "odometer", "type": "integer", "not_null": true, "default": 0},
+            {"name": "gallons", "type": "real", "not_null": true, "default": 0},
+            {"name": "price_per_gallon_cents", "type": "integer", "not_null": true, "default": 0},
+            {"name": "fuel_saver_cents", "type": "integer", "not_null": true, "default": 0},
+            {"name": "cost_cents", "type": "integer", "not_null": true, "default": 0},
+            {"name": "station", "type": "text", "not_null": true, "default": ""},
+            {"name": "note", "type": "text", "not_null": true, "default": ""},
+            {"name": "partial", "type": "integer", "not_null": true, "default": 0},
+            {"name": "missed", "type": "integer", "not_null": true, "default": 0},
+            {"name": "logged_by", "type": "text", "not_null": true, "default": ""},
+            {"name": "created", "type": "integer", "not_null": true, "default": 0},
+            {"name": "updated", "type": "integer", "not_null": true, "default": 0}
+          ],
+          "primary_key": ["vehicle", "id"]
+        },
+        "services": {
+          "columns": [
+            {"name": "vehicle", "type": "text", "not_null": true, "references": "vehicles.slug", "on_delete": "cascade"},
+            {"name": "id", "type": "text", "not_null": true},
+            {"name": "on_date", "type": "text", "not_null": true, "default": ""},
+            {"name": "odometer", "type": "integer", "not_null": true, "default": 0},
+            {"name": "shop", "type": "text", "not_null": true, "default": ""},
+            {"name": "work", "type": "text", "not_null": true, "default": ""},
+            {"name": "cost_cents", "type": "integer", "not_null": true, "default": 0},
+            {"name": "note", "type": "text", "not_null": true, "default": ""},
+            {"name": "logged_by", "type": "text", "not_null": true, "default": ""},
+            {"name": "created", "type": "integer", "not_null": true, "default": 0},
+            {"name": "updated", "type": "integer", "not_null": true, "default": 0}
+          ],
+          "primary_key": ["vehicle", "id"]
+        }
+      },
+      "datastore": {
+        "namespace": "cartracker",
+        "kinds": {
+          "user": {
+            "table": "users", "key": "email",
+            "columns": {"Name": "name", "Created": "created", "LastLogin": "last_login", "Admin": "admin", "ViewOnly": "view_only", "Disabled": "disabled", "DefaultVehicle": "default_vehicle"},
+            "ignore": ["Email"]
+          },
+          "vehicle": {
+            "table": "vehicles", "key": "slug",
+            "columns": {"Name": "name", "Year": "year", "Make": "make", "Model": "model", "Trim": "trim", "Plate": "plate", "VIN": "vin", "Owner": "owner", "SharedWith": "shared_with", "PurchasedOn": "purchased_on", "PurchaseOdometer": "purchase_odometer", "PurchasePriceCents": "purchase_price_cents", "TankGallons": "tank_gallons", "Retired": "retired", "SoldOn": "sold_on", "SoldOdometer": "sold_odometer", "SoldPriceCents": "sold_price_cents", "Created": "created", "Updated": "updated"},
+            "ignore": ["Slug"]
+          },
+          "fillup": {
+            "table": "fillups", "key": "id", "parent": "vehicle",
+            "columns": {"On": "on_date", "At": "at", "Odometer": "odometer", "Gallons": "gallons", "PricePerGallonCents": "price_per_gallon_cents", "FuelSaverCents": "fuel_saver_cents", "CostCents": "cost_cents", "Station": "station", "Note": "note", "Partial": "partial", "Missed": "missed", "By": "logged_by", "Created": "created", "Updated": "updated"},
+            "ignore": ["ID", "Vehicle"]
+          },
+          "service": {
+            "table": "services", "key": "id", "parent": "vehicle",
+            "columns": {"On": "on_date", "Odometer": "odometer", "Shop": "shop", "Work": "work", "CostCents": "cost_cents", "Note": "note", "By": "logged_by", "Created": "created", "Updated": "updated"},
+            "ignore": ["ID", "Vehicle"]
+          }
+        },
+        "ignore_kinds": []
+      }
+    }
+  }
+}

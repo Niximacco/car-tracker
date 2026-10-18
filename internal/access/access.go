@@ -182,8 +182,8 @@ func Editor(c *gin.Context, vehicle types.Vehicle) bool {
 	}
 
 	if !auth.Confirmed(c) {
-		// Datastore could not be asked what this account is allowed to do. A
-		// write would almost certainly fail a moment later anyway, so refusing
+		// The database could not be asked what this account is allowed to do.
+		// A write would almost certainly fail a moment later anyway, so refusing
 		// it here closes the window where a view-only account looks ordinary.
 		page := Page(c, "Try again in a moment")
 		page.Error = "We couldn't check what this account is allowed to do. Try again in a moment."

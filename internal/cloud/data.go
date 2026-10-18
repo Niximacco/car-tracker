@@ -1,20 +1,28 @@
-// Package data is everything that touches Cloud Datastore.
+// Package data is everything that touches the database.
+//
+// It is a SQLite file of this service's own, on the host. The deploy makes it
+// and its tables - users, vehicles, fillups and services, declared in
+// pillar.json - before the container starts, and says where it is in
+// DATABASE_PATH.
 //
 // The user half is carried over from wild-games and niximacco-recipes, because
 // the allow list it implements is the same allow list. What is this site's own
 // is the vehicle, and the two kinds of entry that hang off it.
 //
-// Fill-ups and shop visits are datastore children of their vehicle. Two things
-// follow from that and both of them matter. An ancestor query is strongly
-// consistent, so pasting four years of history and then looking at it cannot
+// Fill-ups and shop visits carry their vehicle's slug, as a column that
+// references the car and is deleted with it. Two things follow from that and
+// both of them matter. Everything a car's pages ask for is one indexed read of
+// one table, so pasting four years of history and then looking at it cannot
 // show a car with half its fill-ups missing. And an entry's id only has to be
-// unique inside its own car, which is what lets the id be the day and the
-// odometer reading rather than a random string - so importing the same rows
-// twice updates them instead of doubling them.
+// unique inside its own car - the primary key is the pair - which is what lets
+// the id be the day and the odometer reading rather than a random string, so
+// importing the same rows twice updates them instead of doubling them.
 package data
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -22,18 +30,19 @@ import (
 	"strings"
 	"time"
 
-	datastore "cloud.google.com/go/datastore"
 	"github.com/Niximacco/car-tracker/internal/types"
+
+	// SQLite in pure Go, so the container's CGO_ENABLED=0 build keeps working.
+	_ "modernc.org/sqlite"
 )
 
-var datastoreClient *datastore.Client
-var ctx context.Context
-var namespace string
+var db *sql.DB
+var ctx = context.Background()
 
 var AlreadyExistsErr = errors.New("entity already exists")
 
 var (
-	UserNotFoundErr = errors.New("user not found in datastore")
+	UserNotFoundErr = errors.New("user not found")
 	UserDisabledErr = errors.New("user is disabled")
 
 	VehicleNotFoundErr = errors.New("vehicle not found")
@@ -42,17 +51,13 @@ var (
 	NoVehiclesErr      = errors.New("no vehicles have been added yet")
 )
 
-const (
-	userKind    = "user"
-	vehicleKind = "vehicle"
-	fillupKind  = "fillup"
-	serviceKind = "service"
-)
-
-// The list caps. None of these queries carries a sort order: sorting in
-// datastore alongside an ancestor filter would need a composite index, and at
-// one car's scale - a fill-up a fortnight for a decade is under three hundred
-// rows - sorting the results here is free.
+// The list caps.
+//
+// A car's fuel and service history is ordered by the database, on the primary
+// key's own table, so a cap takes the oldest entries rather than an arbitrary
+// page of them. The vehicle and user lists are ordered here instead, because
+// what they sort on - a car's retirement and the name it falls back to, a
+// person's address - is worked out in types rather than stored.
 const (
 	USER_LIST_LIMIT    = 500
 	VEHICLE_LIST_LIMIT = 200
@@ -61,23 +66,98 @@ const (
 )
 
 func Initialize() {
-	projID := os.Getenv("DATASTORE_PROJECT_ID")
-	if projID == "" {
-		log.Fatal(`You need to set the environment variable "DATASTORE_PROJECT_ID"`)
+	path := os.Getenv("DATABASE_PATH")
+	if path == "" {
+		log.Fatal(`You need to set the environment variable "DATABASE_PATH"`)
 	}
 
-	namespace = os.Getenv("DATASTORE_NAMESPACE")
-	if namespace == "" {
-		log.Fatal(`You need to set the environment variable "DATASTORE_NAMESPACE"`)
+	if err := Open(path); err != nil {
+		log.Fatalf("Could not open the database at %s: %v", path, err)
 	}
+}
 
-	ctx = context.Background()
-	client, err := datastore.NewClient(ctx, projID)
+// Open opens the database at path, and checks that its tables are there. A file
+// without them is a deploy that did not make them, and is better found out by
+// the container not coming up than by every page failing.
+//
+// busy_timeout has a writer wait for another rather than fail. foreign_keys is
+// what makes a fill-up's reference to its vehicle do anything - it is per
+// connection in SQLite, and deleting a car relies on the cascade. And
+// _txlock=immediate has a transaction take the write lock when it begins, so
+// two that read and then write - two drivers saving the same car - queue rather
+// than deadlock.
+func Open(path string) error {
+	opened, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate")
 	if err != nil {
-		log.Fatalf("Could not create datastore client: %v", err)
+		return err
 	}
 
-	datastoreClient = client
+	for _, table := range []string{"users", "vehicles", "fillups", "services"} {
+		if _, err := opened.ExecContext(ctx, `SELECT 1 FROM `+table+` LIMIT 1`); err != nil {
+			opened.Close()
+			return err
+		}
+	}
+
+	if db != nil {
+		db.Close()
+	}
+	db = opened
+
+	return nil
+}
+
+// inTransaction runs change in a transaction, committed if it returns nil and
+// rolled back if not.
+func inTransaction(change func(tx *sql.Tx) error) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	if err := change(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// changed is whether a statement wrote a row, for telling a write to something
+// that is not there from one that worked.
+func changed(result sql.Result, err error) (bool, error) {
+	if err != nil {
+		return false, err
+	}
+
+	rows, err := result.RowsAffected()
+	return rows > 0, err
+}
+
+// flag is a bool as a STRICT integer column wants it.
+func flag(value bool) int64 {
+	if value {
+		return 1
+	}
+
+	return 0
+}
+
+// scanner is a row from a query or a single-row lookup, which scan the same way.
+type scanner interface {
+	Scan(into ...any) error
+}
+
+// rowQuerier is the database or a transaction on it, for a lookup that is the
+// same either way.
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// execer is the database or a transaction on it, for a write that is the same
+// either way.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 // ---------------------------------------------------------------- users ----
@@ -87,8 +167,8 @@ func NormalizeEmail(email string) string {
 }
 
 // ValidAddress is a deliberately loose check. The real check is whether the
-// address exists in the user kind; this only catches obvious junk before we
-// bother datastore, or auth.ajn.me, with it.
+// address is in the users table; this only catches obvious junk before we
+// bother the database, or auth.ajn.me, with it.
 func ValidAddress(email string) bool {
 	if len(email) < 3 || len(email) > 254 {
 		return false
@@ -107,26 +187,21 @@ func ValidAddress(email string) bool {
 	return !strings.ContainsAny(email, " \t\r\n<>\"")
 }
 
-func userKey(email string) *datastore.Key {
-	key := datastore.NameKey(userKind, NormalizeEmail(email), nil)
-	key.Namespace = namespace
-	return key
+const userColumns = `email, name, created, last_login, admin, view_only, disabled, default_vehicle`
+
+func scanUser(row scanner) (user types.User, err error) {
+	err = row.Scan(&user.Email, &user.Name, &user.Created, &user.LastLogin,
+		&user.Admin, &user.ViewOnly, &user.Disabled, &user.DefaultVehicle)
+	return user, err
 }
 
 func GetUser(email string) (user types.User, err error) {
-	err = datastoreClient.Get(ctx, userKey(email), &user)
-	if errors.Is(err, datastore.ErrNoSuchEntity) {
-		return user, UserNotFoundErr
+	user, err = scanUser(db.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE email = ?`, NormalizeEmail(email)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return types.User{}, UserNotFoundErr
 	}
-	// A user entity created by hand in the console may carry properties this
-	// struct doesn't know about. Everything it does know about still loaded, so
-	// that isn't a reason to refuse the login.
-	if err != nil && !isFieldMismatch(err) {
-		return user, err
-	}
-
-	if user.Email == "" {
-		user.Email = NormalizeEmail(email)
+	if err != nil {
+		return types.User{}, err
 	}
 
 	if user.Disabled {
@@ -139,64 +214,53 @@ func GetUser(email string) (user types.User, err error) {
 // NewUser adds an address to the allow list. An account is either an admin, a
 // view-only reader, or an ordinary member - admin and view only are opposites,
 // so an account asked to be both is made an admin.
+//
+// An address already on the list is AlreadyExistsErr rather than an overwrite,
+// so re-adding somebody can never quietly reset what they may do or lose when
+// they last signed in.
 func NewUser(email string, name string, admin bool, viewOnly bool) (user types.User, err error) {
-	email = NormalizeEmail(email)
-	key := userKey(email)
-
 	user = types.User{
-		Email:    email,
+		Email:    NormalizeEmail(email),
 		Name:     strings.TrimSpace(name),
 		Created:  time.Now().Unix(),
 		Admin:    admin,
 		ViewOnly: viewOnly && !admin,
 	}
 
-	_, err = datastoreClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
-		var existing types.User
-		if err := tx.Get(key, &existing); err != datastore.ErrNoSuchEntity {
-			if err == nil || isFieldMismatch(err) {
-				return AlreadyExistsErr
-			}
-			return err
-		}
-
-		_, err := tx.Put(key, &user)
-		return err
-	})
-
+	added, err := changed(db.ExecContext(ctx,
+		`INSERT INTO users (email, name, created, admin, view_only) VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT (email) DO NOTHING`,
+		user.Email, user.Name, user.Created, flag(user.Admin), flag(user.ViewOnly)))
 	if err != nil {
 		return types.User{}, err
+	}
+	if !added {
+		return types.User{}, AlreadyExistsErr
 	}
 
 	return user, nil
 }
 
-func ListUsers(limit int) (users []types.User, err error) {
-	query := datastore.NewQuery(userKind).Namespace(namespace)
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
+func ListUsers(limit int) ([]types.User, error) {
+	query, args := withLimit(`SELECT `+userColumns+` FROM users ORDER BY email`, limit, nil)
 
-	keys, err := datastoreClient.GetAll(ctx, query, &users)
-	if err = tolerateFieldMismatch(err); err != nil {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if users == nil {
-		users = []types.User{}
-	}
-
-	for i := range users {
-		if users[i].Email == "" && i < len(keys) {
-			users[i].Email = keys[i].Name
+	users := []types.User{}
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
 		}
+
+		users = append(users, user)
 	}
 
-	sort.Slice(users, func(i, j int) bool {
-		return users[i].Email < users[j].Email
-	})
-
-	return users, nil
+	return users, rows.Err()
 }
 
 // UpdateUser changes what an account is allowed to do.
@@ -210,32 +274,38 @@ func UpdateUser(email string, name *string, admin *bool, viewOnly *bool,
 	disabled *bool) (user types.User, err error) {
 	email = NormalizeEmail(email)
 
-	values := map[string]interface{}{}
+	var sets []string
+	var values []any
+
+	set := func(column string, value any) {
+		sets = append(sets, column+" = ?")
+		values = append(values, value)
+	}
 
 	if name != nil {
-		values["Name"] = strings.TrimSpace(*name)
+		set("name", strings.TrimSpace(*name))
 	}
 	if admin != nil {
-		values["Admin"] = *admin
+		set("admin", flag(*admin))
 		if *admin {
-			values["ViewOnly"] = false
+			set("view_only", flag(false))
 		}
 	}
 	if viewOnly != nil {
-		values["ViewOnly"] = *viewOnly
+		set("view_only", flag(*viewOnly))
 		if *viewOnly {
-			values["Admin"] = false
+			set("admin", flag(false))
 		}
 	}
 	if disabled != nil {
-		values["Disabled"] = *disabled
+		set("disabled", flag(*disabled))
 	}
 
-	if len(values) == 0 {
+	if len(sets) == 0 {
 		return types.User{}, nil
 	}
 
-	if err = setUserProperties(email, values); err != nil {
+	if err = setUserColumns(email, sets, values); err != nil {
 		return types.User{}, err
 	}
 
@@ -258,92 +328,113 @@ func UpdateUser(email string, name *string, admin *bool, viewOnly *bool,
 // different kind of change: UpdateUser is an admin deciding what an account may
 // do, and this is an account deciding where it lands. Nothing here needs to
 // check the slug - the handler has already made sure this account can see that
-// car, and the page it points at checks again on every visit.
+// car, and the page it points at checks again on every visit. It is deliberately
+// not a reference to the vehicles table either, so retiring and deleting a car
+// is never blocked by somebody having it starred.
 func SetDefaultVehicle(email string, slug string) error {
-	return setUserProperties(email, map[string]interface{}{
-		"DefaultVehicle": strings.TrimSpace(slug),
-	})
+	return setUserColumns(NormalizeEmail(email),
+		[]string{"default_vehicle = ?"}, []any{strings.TrimSpace(slug)})
 }
 
 func MarkLoggedIn(email string, at time.Time) error {
-	return setUserProperties(email, map[string]interface{}{"LastLogin": at.Unix()})
+	return setUserColumns(NormalizeEmail(email), []string{"last_login = ?"}, []any{at.Unix()})
 }
 
-func mutateUser(email string, change func(current datastore.PropertyList) ([]datastore.Property, error)) error {
-	key := userKey(email)
-	_, err := datastoreClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
-		var properties datastore.PropertyList
-		if err := tx.Get(key, &properties); err != nil {
-			if errors.Is(err, datastore.ErrNoSuchEntity) {
-				return UserNotFoundErr
-			}
-			return err
-		}
-
-		writes, err := change(properties)
-		if err != nil {
-			return err
-		}
-
-		// A write replaces the whole property, indexing included, so what ends
-		// up on the entity is what the caller asked for rather than a mix of
-		// that and however the property happened to be stored before.
-		for _, write := range writes {
-			updated := false
-			for i := range properties {
-				if properties[i].Name == write.Name {
-					properties[i] = write
-					updated = true
-					break
-				}
-			}
-
-			if !updated {
-				properties = append(properties, write)
-			}
-		}
-
-		_, err = tx.Put(key, &properties)
+// setUserColumns writes columns on one user, and says so when there is no such
+// user rather than quietly writing nothing.
+func setUserColumns(email string, sets []string, values []any) error {
+	written, err := changed(db.ExecContext(ctx,
+		`UPDATE users SET `+strings.Join(sets, ", ")+` WHERE email = ?`, append(values, email)...))
+	if err != nil {
 		return err
-	})
+	}
+	if !written {
+		return UserNotFoundErr
+	}
 
-	return err
-}
-
-func setUserProperties(email string, values map[string]interface{}) error {
-	return mutateUser(email, func(datastore.PropertyList) ([]datastore.Property, error) {
-		writes := make([]datastore.Property, 0, len(values))
-		for name, value := range values {
-			writes = append(writes, datastore.Property{Name: name, Value: value})
-		}
-
-		return writes, nil
-	})
+	return nil
 }
 
 // ------------------------------------------------------------- vehicles ----
 
-func vehicleKey(slug string) *datastore.Key {
-	key := datastore.NameKey(vehicleKind, slug, nil)
-	key.Namespace = namespace
-	return key
-}
+const vehicleColumns = `slug, name, year, make, model, trim, plate, vin, owner, shared_with, ` +
+	`purchased_on, purchase_odometer, purchase_price_cents, tank_gallons, ` +
+	`retired, sold_on, sold_odometer, sold_price_cents, created, updated`
 
-func GetVehicle(slug string) (vehicle types.Vehicle, err error) {
-	err = datastoreClient.Get(ctx, vehicleKey(slug), &vehicle)
-	if errors.Is(err, datastore.ErrNoSuchEntity) {
-		return vehicle, VehicleNotFoundErr
+func scanVehicle(row scanner) (vehicle types.Vehicle, err error) {
+	var sharedWith string
+
+	if err = row.Scan(&vehicle.Slug, &vehicle.Name, &vehicle.Year, &vehicle.Make,
+		&vehicle.Model, &vehicle.Trim, &vehicle.Plate, &vehicle.VIN,
+		&vehicle.Owner, &sharedWith, &vehicle.PurchasedOn, &vehicle.PurchaseOdometer,
+		&vehicle.PurchasePriceCents, &vehicle.TankGallons, &vehicle.Retired,
+		&vehicle.SoldOn, &vehicle.SoldOdometer, &vehicle.SoldPriceCents,
+		&vehicle.Created, &vehicle.Updated); err != nil {
+		return types.Vehicle{}, err
 	}
 
-	if err != nil && !isFieldMismatch(err) {
-		return vehicle, err
-	}
-
-	if vehicle.Slug == "" {
-		vehicle.Slug = slug
-	}
+	vehicle.SharedWith = readAddresses(sharedWith)
 
 	return vehicle, nil
+}
+
+func vehicleValues(vehicle types.Vehicle) []any {
+	return []any{vehicle.Slug, vehicle.Name, int64(vehicle.Year), vehicle.Make,
+		vehicle.Model, vehicle.Trim, vehicle.Plate, vehicle.VIN,
+		vehicle.Owner, writeAddresses(vehicle.SharedWith), vehicle.PurchasedOn, int64(vehicle.PurchaseOdometer),
+		vehicle.PurchasePriceCents, vehicle.TankGallons, flag(vehicle.Retired),
+		vehicle.SoldOn, int64(vehicle.SoldOdometer), vehicle.SoldPriceCents,
+		vehicle.Created, vehicle.Updated}
+}
+
+// readAddresses is a share list as it is stored, which is JSON in a text
+// column. A column that is empty, or that holds something other than a list of
+// addresses, reads as no shares: a car nobody can see but its owner is a
+// recoverable sort of wrong, and refusing to load the car at all is not.
+func readAddresses(stored string) []string {
+	if strings.TrimSpace(stored) == "" {
+		return []string{}
+	}
+
+	var addresses []string
+	if err := json.Unmarshal([]byte(stored), &addresses); err != nil {
+		log.Printf("could not read a vehicle's share list: %s", err.Error())
+		return []string{}
+	}
+
+	if addresses == nil {
+		return []string{}
+	}
+
+	return addresses
+}
+
+func writeAddresses(addresses []string) string {
+	if addresses == nil {
+		addresses = []string{}
+	}
+
+	stored, err := json.Marshal(addresses)
+	if err != nil {
+		// json.Marshal of a []string cannot fail. An empty list rather than a
+		// panic is the right answer to the impossible case anyway.
+		return "[]"
+	}
+
+	return string(stored)
+}
+
+func getVehicle(from rowQuerier, slug string) (types.Vehicle, error) {
+	vehicle, err := scanVehicle(from.QueryRowContext(ctx, `SELECT `+vehicleColumns+` FROM vehicles WHERE slug = ?`, slug))
+	if errors.Is(err, sql.ErrNoRows) {
+		return types.Vehicle{}, VehicleNotFoundErr
+	}
+
+	return vehicle, err
+}
+
+func GetVehicle(slug string) (types.Vehicle, error) {
+	return getVehicle(db, strings.TrimSpace(slug))
 }
 
 // NewVehicle adds a car. The slug is the caller's to choose and is refused if
@@ -361,23 +452,15 @@ func NewVehicle(vehicle types.Vehicle) (types.Vehicle, error) {
 	vehicle.Created = time.Now().Unix()
 	vehicle.Updated = vehicle.Created
 
-	key := vehicleKey(vehicle.Slug)
-
-	_, err := datastoreClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
-		var existing types.Vehicle
-		if err := tx.Get(key, &existing); err != datastore.ErrNoSuchEntity {
-			if err == nil || isFieldMismatch(err) {
-				return AlreadyExistsErr
-			}
-			return err
-		}
-
-		_, err := tx.Put(key, &vehicle)
-		return err
-	})
-
+	added, err := changed(db.ExecContext(ctx,
+		`INSERT INTO vehicles (`+vehicleColumns+`)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (slug) DO NOTHING`, vehicleValues(vehicle)...))
 	if err != nil {
 		return types.Vehicle{}, err
+	}
+	if !added {
+		return types.Vehicle{}, AlreadyExistsErr
 	}
 
 	return vehicle, nil
@@ -388,21 +471,14 @@ func NewVehicle(vehicle types.Vehicle) (types.Vehicle, error) {
 //
 // The read and the write are in one transaction because two drivers editing the
 // same car is the ordinary case here, not a race worth ignoring. A change
-// function that returns an error leaves the entity exactly as it was.
+// function that returns an error leaves the row exactly as it was.
 func UpdateVehicle(slug string, change func(vehicle *types.Vehicle) error) (vehicle types.Vehicle, err error) {
-	key := vehicleKey(slug)
+	slug = strings.TrimSpace(slug)
 
-	_, err = datastoreClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
-		var current types.Vehicle
-		if err := tx.Get(key, &current); err != nil && !isFieldMismatch(err) {
-			if errors.Is(err, datastore.ErrNoSuchEntity) {
-				return VehicleNotFoundErr
-			}
+	err = inTransaction(func(tx *sql.Tx) error {
+		current, err := getVehicle(tx, slug)
+		if err != nil {
 			return err
-		}
-
-		if current.Slug == "" {
-			current.Slug = slug
 		}
 
 		if err := change(&current); err != nil {
@@ -414,10 +490,18 @@ func UpdateVehicle(slug string, change func(vehicle *types.Vehicle) error) (vehi
 		current.SharedWith = normalizeAddresses(current.SharedWith, current.Owner)
 		current.Updated = time.Now().Unix()
 
-		vehicle = current
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE vehicles SET name = ?, year = ?, make = ?, model = ?, trim = ?,
+			 plate = ?, vin = ?, owner = ?, shared_with = ?, purchased_on = ?,
+			 purchase_odometer = ?, purchase_price_cents = ?, tank_gallons = ?,
+			 retired = ?, sold_on = ?, sold_odometer = ?, sold_price_cents = ?,
+			 created = ?, updated = ? WHERE slug = ?`,
+			append(vehicleValues(current)[1:], current.Slug)...); err != nil {
+			return err
+		}
 
-		_, err := tx.Put(key, &current)
-		return err
+		vehicle = current
+		return nil
 	})
 
 	if err != nil {
@@ -429,27 +513,34 @@ func UpdateVehicle(slug string, change func(vehicle *types.Vehicle) error) (vehi
 
 // ListVehicles is every car on the site. It is the admin view and the input to
 // VehiclesFor; ordinary pages go through that.
-func ListVehicles() (vehicles []types.Vehicle, err error) {
-	query := datastore.NewQuery(vehicleKind).Namespace(namespace).Limit(VEHICLE_LIST_LIMIT)
+func ListVehicles() ([]types.Vehicle, error) {
+	query, args := withLimit(`SELECT `+vehicleColumns+` FROM vehicles ORDER BY slug`, VEHICLE_LIST_LIMIT, nil)
 
-	keys, err := datastoreClient.GetAll(ctx, query, &vehicles)
-	if err = tolerateFieldMismatch(err); err != nil {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if vehicles == nil {
-		vehicles = []types.Vehicle{}
+	vehicles := []types.Vehicle{}
+	for rows.Next() {
+		vehicle, err := scanVehicle(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		vehicles = append(vehicles, vehicle)
 	}
 
-	for i := range vehicles {
-		if vehicles[i].Slug == "" && i < len(keys) {
-			vehicles[i].Slug = keys[i].Name
-		}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	// Cars still in the driveway first, then by name. A retired car keeps its
 	// whole history and its own page; it just stops being the first thing on
-	// the screen.
+	// the screen. The order is worked out here rather than asked of the
+	// database, because the name a car is sorted under is the one Called()
+	// falls back to when it has none of its own.
 	sort.SliceStable(vehicles, func(a int, b int) bool {
 		if vehicles[a].Retired != vehicles[b].Retired {
 			return !vehicles[a].Retired
@@ -465,10 +556,11 @@ func ListVehicles() (vehicles []types.Vehicle, err error) {
 // has been shared with. An admin sees all of them, because somebody has to be
 // able to sort out a car whose owner has left.
 //
-// The filter is done here rather than in the query. Datastore can filter on an
-// array property, but it would take two queries and a merge to get the owned
-// and shared sets, and at a garage's scale - a household has a handful of cars,
-// not a fleet - reading them and sorting them out here is one round trip.
+// The filter is done here rather than in the query. The share list is JSON in a
+// column, so asking the database to match an address in it would mean either a
+// second table or a LIKE over the text - and at a garage's scale, a household
+// has a handful of cars rather than a fleet, reading them and sorting them out
+// here is one round trip.
 func VehiclesFor(user types.User) (vehicles []types.Vehicle, err error) {
 	all, err := ListVehicles()
 	if err != nil {
@@ -491,36 +583,20 @@ func VehiclesFor(user types.User) (vehicles []types.Vehicle, err error) {
 
 // DeleteVehicle removes a car and everything logged against it.
 //
-// The entries go first. A vehicle whose entries outlived it would leave rows
-// nothing can reach and nothing can delete, since every query for them is an
-// ancestor query on a key that no longer resolves to anything.
+// The entries go with it rather than being deleted first: both tables reference
+// vehicles.slug on delete cascade, which the foreign_keys pragma in Open is
+// what makes real. Entries that outlived their vehicle would be rows the site
+// has no page for and no way to delete.
 func DeleteVehicle(slug string) error {
-	parent := vehicleKey(slug)
-
-	for _, kind := range []string{fillupKind, serviceKind} {
-		query := datastore.NewQuery(kind).Namespace(namespace).Ancestor(parent).KeysOnly()
-
-		keys, err := datastoreClient.GetAll(ctx, query, nil)
-		if err = tolerateFieldMismatch(err); err != nil {
-			return err
-		}
-
-		// DeleteMulti has a cap on how many keys go in one call, so a long
-		// history goes in batches.
-		const batch = 400
-		for at := 0; at < len(keys); at += batch {
-			end := at + batch
-			if end > len(keys) {
-				end = len(keys)
-			}
-
-			if err := datastoreClient.DeleteMulti(ctx, keys[at:end]); err != nil {
-				return err
-			}
-		}
+	deleted, err := changed(db.ExecContext(ctx, `DELETE FROM vehicles WHERE slug = ?`, strings.TrimSpace(slug)))
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return VehicleNotFoundErr
 	}
 
-	return datastoreClient.Delete(ctx, parent)
+	return nil
 }
 
 // normalizeAddresses lower-cases a share list, drops blanks and duplicates, and
@@ -546,79 +622,70 @@ func normalizeAddresses(addresses []string, owner string) []string {
 	return out
 }
 
-// ------------------------------------------------------------- fill-ups ----
+// vehicleExists is the check that stands in front of writing an entry. The
+// reference on the column would refuse an entry whose car is not there anyway,
+// but as a constraint failure rather than as the error the pages know how to
+// show.
+func vehicleExists(from rowQuerier, slug string) error {
+	var one int
+	err := from.QueryRowContext(ctx, `SELECT 1 FROM vehicles WHERE slug = ?`, slug).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return VehicleNotFoundErr
+	}
 
-func fillupKey(vehicle string, id string) *datastore.Key {
-	key := datastore.NameKey(fillupKind, id, vehicleKey(vehicle))
-	key.Namespace = namespace
-	return key
+	return err
 }
 
-func GetFillup(vehicle string, id string) (fillup types.Fillup, err error) {
-	err = datastoreClient.Get(ctx, fillupKey(vehicle, id), &fillup)
-	if errors.Is(err, datastore.ErrNoSuchEntity) {
-		return fillup, FillupNotFoundErr
+// ------------------------------------------------------------- fill-ups ----
+
+const fillupColumns = `vehicle, id, on_date, at, odometer, gallons, ` +
+	`price_per_gallon_cents, fuel_saver_cents, cost_cents, station, note, ` +
+	`partial, missed, logged_by, created, updated`
+
+func scanFillup(row scanner) (fillup types.Fillup, err error) {
+	err = row.Scan(&fillup.Vehicle, &fillup.ID, &fillup.On, &fillup.At,
+		&fillup.Odometer, &fillup.Gallons, &fillup.PricePerGallonCents,
+		&fillup.FuelSaverCents, &fillup.CostCents, &fillup.Station, &fillup.Note,
+		&fillup.Partial, &fillup.Missed, &fillup.By, &fillup.Created, &fillup.Updated)
+	return fillup, err
+}
+
+func fillupValues(fillup types.Fillup) []any {
+	return []any{fillup.Vehicle, fillup.ID, fillup.On, fillup.At,
+		int64(fillup.Odometer), fillup.Gallons, fillup.PricePerGallonCents,
+		fillup.FuelSaverCents, fillup.CostCents, fillup.Station, fillup.Note,
+		flag(fillup.Partial), flag(fillup.Missed), fillup.By, fillup.Created, fillup.Updated}
+}
+
+func getFillup(from rowQuerier, vehicle string, id string) (types.Fillup, error) {
+	fillup, err := scanFillup(from.QueryRowContext(ctx,
+		`SELECT `+fillupColumns+` FROM fillups WHERE vehicle = ? AND id = ?`, vehicle, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return types.Fillup{}, FillupNotFoundErr
 	}
 
-	if err != nil && !isFieldMismatch(err) {
-		return fillup, err
-	}
+	return fillup, err
+}
 
-	if fillup.ID == "" {
-		fillup.ID = id
-	}
-
-	fillup.Vehicle = vehicle
-
-	return fillup, nil
+func GetFillup(vehicle string, id string) (types.Fillup, error) {
+	return getFillup(db, vehicle, id)
 }
 
 // SaveFillup writes a fill-up, creating it or replacing it.
 //
 // The id is derived from the day and the reading, so saving a fill-up whose
-// date or odometer has been corrected writes a new entity rather than moving
-// the old one. The caller passes the id it was editing so the old one can go in
-// the same transaction; for a new entry that is empty.
+// date or odometer has been corrected writes a new row rather than moving the
+// old one. The caller passes the id it was editing so the old one can go in the
+// same transaction; for a new entry that is empty.
 func SaveFillup(fillup types.Fillup, replacing string, by string) (types.Fillup, error) {
 	if fillup.Vehicle == "" {
 		return types.Fillup{}, VehicleNotFoundErr
 	}
 
-	fillup.ID = types.FillupID(fillup.On, fillup.Odometer)
-	fillup.Updated = time.Now().Unix()
-
-	key := fillupKey(fillup.Vehicle, fillup.ID)
-
-	_, err := datastoreClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
-		var existing types.Fillup
-		switch err := tx.Get(key, &existing); {
-		case err == nil, isFieldMismatch(err):
-			// Keep who logged it first and when. An edit is an edit; it does
-			// not make the fill-up somebody else's.
-			fillup.Created = existing.Created
-			fillup.By = existing.By
-
-		case errors.Is(err, datastore.ErrNoSuchEntity):
-			fillup.Created = fillup.Updated
-			fillup.By = NormalizeEmail(by)
-
-		default:
-			return err
-		}
-
-		if fillup.By == "" {
-			fillup.By = NormalizeEmail(by)
-		}
-
-		if _, err := tx.Put(key, &fillup); err != nil {
-			return err
-		}
-
-		if replacing != "" && replacing != fillup.ID {
-			return tx.Delete(fillupKey(fillup.Vehicle, replacing))
-		}
-
-		return nil
+	err := inTransaction(func(tx *sql.Tx) error {
+		saved, err := saveFillup(tx, fillup, replacing, by)
+		fillup = saved
+		return err
 	})
 
 	if err != nil {
@@ -628,69 +695,136 @@ func SaveFillup(fillup types.Fillup, replacing string, by string) (types.Fillup,
 	return fillup, nil
 }
 
+// saveFillup is one fill-up written inside somebody else's transaction, which
+// is what lets an import be a single one.
+func saveFillup(tx *sql.Tx, fillup types.Fillup, replacing string, by string) (types.Fillup, error) {
+	if err := vehicleExists(tx, fillup.Vehicle); err != nil {
+		return types.Fillup{}, err
+	}
+
+	fillup.ID = types.FillupID(fillup.On, fillup.Odometer)
+	fillup.Updated = time.Now().Unix()
+
+	switch existing, err := getFillup(tx, fillup.Vehicle, fillup.ID); {
+	case err == nil:
+		// Keep who logged it first and when. An edit is an edit; it does not
+		// make the fill-up somebody else's.
+		fillup.Created = existing.Created
+		fillup.By = existing.By
+
+	case errors.Is(err, FillupNotFoundErr):
+		fillup.Created = fillup.Updated
+		fillup.By = NormalizeEmail(by)
+
+	default:
+		return types.Fillup{}, err
+	}
+
+	if fillup.By == "" {
+		fillup.By = NormalizeEmail(by)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO fillups (`+fillupColumns+`)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (vehicle, id) DO UPDATE SET
+		   on_date = excluded.on_date, at = excluded.at, odometer = excluded.odometer,
+		   gallons = excluded.gallons, price_per_gallon_cents = excluded.price_per_gallon_cents,
+		   fuel_saver_cents = excluded.fuel_saver_cents, cost_cents = excluded.cost_cents,
+		   station = excluded.station, note = excluded.note, partial = excluded.partial,
+		   missed = excluded.missed, logged_by = excluded.logged_by,
+		   created = excluded.created, updated = excluded.updated`,
+		fillupValues(fillup)...); err != nil {
+		return types.Fillup{}, err
+	}
+
+	if replacing != "" && replacing != fillup.ID {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM fillups WHERE vehicle = ? AND id = ?`,
+			fillup.Vehicle, replacing); err != nil {
+			return types.Fillup{}, err
+		}
+	}
+
+	return fillup, nil
+}
+
 func DeleteFillup(vehicle string, id string) error {
-	return datastoreClient.Delete(ctx, fillupKey(vehicle, id))
+	deleted, err := changed(db.ExecContext(ctx, `DELETE FROM fillups WHERE vehicle = ? AND id = ?`, vehicle, id))
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return FillupNotFoundErr
+	}
+
+	return nil
 }
 
 // ListFillups is a car's whole fuel history, oldest first.
 //
-// It is an ancestor query with no sort order on it. Sorting in datastore
-// alongside an ancestor filter would need a composite index for the sake of
-// ordering a few hundred rows we are about to hold in memory anyway.
-func ListFillups(vehicle string) (fillups []types.Fillup, err error) {
-	query := datastore.NewQuery(fillupKind).
-		Namespace(namespace).
-		Ancestor(vehicleKey(vehicle)).
-		Limit(FILLUP_LIST_LIMIT)
+// The order is the database's, on the day and then the reading, which is the
+// order everything downstream expects and the same one types.ByDate puts a
+// loose slice in.
+func ListFillups(vehicle string) ([]types.Fillup, error) {
+	query, args := withLimit(`SELECT `+fillupColumns+` FROM fillups WHERE vehicle = ? ORDER BY on_date, odometer`,
+		FILLUP_LIST_LIMIT, []any{vehicle})
 
-	keys, err := datastoreClient.GetAll(ctx, query, &fillups)
-	if err = tolerateFieldMismatch(err); err != nil {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if fillups == nil {
-		fillups = []types.Fillup{}
-	}
-
-	for i := range fillups {
-		if fillups[i].ID == "" && i < len(keys) {
-			fillups[i].ID = keys[i].Name
+	fillups := []types.Fillup{}
+	for rows.Next() {
+		fillup, err := scanFillup(rows)
+		if err != nil {
+			return nil, err
 		}
 
-		fillups[i].Vehicle = vehicle
+		fillups = append(fillups, fillup)
 	}
 
-	types.ByDate(fillups)
-
-	return fillups, nil
+	return fillups, rows.Err()
 }
 
 // ImportFillups writes a batch, counting what was new and what was already
 // there.
 //
 // It is safe to run twice on purpose. Every id is the day and the reading, so a
-// re-paste of the same export updates the same entities - which is what makes
+// re-paste of the same export updates the same rows - which is what makes
 // importing four years of a spreadsheet something you can do wrong and simply
-// do again.
+// do again. The whole batch is one transaction, so an import that fails partway
+// leaves the history exactly as it found it.
 func ImportFillups(fillups []types.Fillup, by string) (added int, updated int, err error) {
-	for _, fillup := range fillups {
-		id := types.FillupID(fillup.On, fillup.Odometer)
+	err = inTransaction(func(tx *sql.Tx) error {
+		added, updated = 0, 0
 
-		_, getErr := GetFillup(fillup.Vehicle, id)
-		switch {
-		case getErr == nil:
-			updated++
+		for _, fillup := range fillups {
+			id := types.FillupID(fillup.On, fillup.Odometer)
 
-		case errors.Is(getErr, FillupNotFoundErr):
-			added++
+			_, getErr := getFillup(tx, fillup.Vehicle, id)
+			switch {
+			case getErr == nil:
+				updated++
 
-		default:
-			return added, updated, getErr
+			case errors.Is(getErr, FillupNotFoundErr):
+				added++
+
+			default:
+				return getErr
+			}
+
+			if _, err := saveFillup(tx, fillup, "", by); err != nil {
+				return err
+			}
 		}
 
-		if _, err := SaveFillup(fillup, "", by); err != nil {
-			return added, updated, err
-		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, 0, err
 	}
 
 	return added, updated, nil
@@ -698,29 +832,34 @@ func ImportFillups(fillups []types.Fillup, by string) (added int, updated int, e
 
 // ------------------------------------------------------------- services ----
 
-func serviceKey(vehicle string, id string) *datastore.Key {
-	key := datastore.NameKey(serviceKind, id, vehicleKey(vehicle))
-	key.Namespace = namespace
-	return key
+const serviceColumns = `vehicle, id, on_date, odometer, shop, work, cost_cents, ` +
+	`note, logged_by, created, updated`
+
+func scanService(row scanner) (service types.Service, err error) {
+	err = row.Scan(&service.Vehicle, &service.ID, &service.On, &service.Odometer,
+		&service.Shop, &service.Work, &service.CostCents, &service.Note,
+		&service.By, &service.Created, &service.Updated)
+	return service, err
 }
 
-func GetService(vehicle string, id string) (service types.Service, err error) {
-	err = datastoreClient.Get(ctx, serviceKey(vehicle, id), &service)
-	if errors.Is(err, datastore.ErrNoSuchEntity) {
-		return service, ServiceNotFoundErr
+func serviceValues(service types.Service) []any {
+	return []any{service.Vehicle, service.ID, service.On, int64(service.Odometer),
+		service.Shop, service.Work, service.CostCents, service.Note,
+		service.By, service.Created, service.Updated}
+}
+
+func getService(from rowQuerier, vehicle string, id string) (types.Service, error) {
+	service, err := scanService(from.QueryRowContext(ctx,
+		`SELECT `+serviceColumns+` FROM services WHERE vehicle = ? AND id = ?`, vehicle, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return types.Service{}, ServiceNotFoundErr
 	}
 
-	if err != nil && !isFieldMismatch(err) {
-		return service, err
-	}
+	return service, err
+}
 
-	if service.ID == "" {
-		service.ID = id
-	}
-
-	service.Vehicle = vehicle
-
-	return service, nil
+func GetService(vehicle string, id string) (types.Service, error) {
+	return getService(db, vehicle, id)
 }
 
 // SaveService writes a shop visit, on the same terms a fill-up is written on.
@@ -729,39 +868,10 @@ func SaveService(service types.Service, replacing string, by string) (types.Serv
 		return types.Service{}, VehicleNotFoundErr
 	}
 
-	service.ID = types.ServiceID(service.On, service.Odometer)
-	service.Updated = time.Now().Unix()
-
-	key := serviceKey(service.Vehicle, service.ID)
-
-	_, err := datastoreClient.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
-		var existing types.Service
-		switch err := tx.Get(key, &existing); {
-		case err == nil, isFieldMismatch(err):
-			service.Created = existing.Created
-			service.By = existing.By
-
-		case errors.Is(err, datastore.ErrNoSuchEntity):
-			service.Created = service.Updated
-			service.By = NormalizeEmail(by)
-
-		default:
-			return err
-		}
-
-		if service.By == "" {
-			service.By = NormalizeEmail(by)
-		}
-
-		if _, err := tx.Put(key, &service); err != nil {
-			return err
-		}
-
-		if replacing != "" && replacing != service.ID {
-			return tx.Delete(serviceKey(service.Vehicle, replacing))
-		}
-
-		return nil
+	err := inTransaction(func(tx *sql.Tx) error {
+		saved, err := saveService(tx, service, replacing, by)
+		service = saved
+		return err
 	})
 
 	if err != nil {
@@ -771,91 +881,131 @@ func SaveService(service types.Service, replacing string, by string) (types.Serv
 	return service, nil
 }
 
+func saveService(tx *sql.Tx, service types.Service, replacing string, by string) (types.Service, error) {
+	if err := vehicleExists(tx, service.Vehicle); err != nil {
+		return types.Service{}, err
+	}
+
+	service.ID = types.ServiceID(service.On, service.Odometer)
+	service.Updated = time.Now().Unix()
+
+	switch existing, err := getService(tx, service.Vehicle, service.ID); {
+	case err == nil:
+		service.Created = existing.Created
+		service.By = existing.By
+
+	case errors.Is(err, ServiceNotFoundErr):
+		service.Created = service.Updated
+		service.By = NormalizeEmail(by)
+
+	default:
+		return types.Service{}, err
+	}
+
+	if service.By == "" {
+		service.By = NormalizeEmail(by)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO services (`+serviceColumns+`)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (vehicle, id) DO UPDATE SET
+		   on_date = excluded.on_date, odometer = excluded.odometer, shop = excluded.shop,
+		   work = excluded.work, cost_cents = excluded.cost_cents, note = excluded.note,
+		   logged_by = excluded.logged_by, created = excluded.created, updated = excluded.updated`,
+		serviceValues(service)...); err != nil {
+		return types.Service{}, err
+	}
+
+	if replacing != "" && replacing != service.ID {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM services WHERE vehicle = ? AND id = ?`,
+			service.Vehicle, replacing); err != nil {
+			return types.Service{}, err
+		}
+	}
+
+	return service, nil
+}
+
 func DeleteService(vehicle string, id string) error {
-	return datastoreClient.Delete(ctx, serviceKey(vehicle, id))
+	deleted, err := changed(db.ExecContext(ctx, `DELETE FROM services WHERE vehicle = ? AND id = ?`, vehicle, id))
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ServiceNotFoundErr
+	}
+
+	return nil
 }
 
 // ListServices is a car's whole maintenance history, oldest first.
-func ListServices(vehicle string) (services []types.Service, err error) {
-	query := datastore.NewQuery(serviceKind).
-		Namespace(namespace).
-		Ancestor(vehicleKey(vehicle)).
-		Limit(SERVICE_LIST_LIMIT)
+func ListServices(vehicle string) ([]types.Service, error) {
+	query, args := withLimit(`SELECT `+serviceColumns+` FROM services WHERE vehicle = ? ORDER BY on_date, odometer`,
+		SERVICE_LIST_LIMIT, []any{vehicle})
 
-	keys, err := datastoreClient.GetAll(ctx, query, &services)
-	if err = tolerateFieldMismatch(err); err != nil {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	if services == nil {
-		services = []types.Service{}
-	}
-
-	for i := range services {
-		if services[i].ID == "" && i < len(keys) {
-			services[i].ID = keys[i].Name
+	services := []types.Service{}
+	for rows.Next() {
+		service, err := scanService(rows)
+		if err != nil {
+			return nil, err
 		}
 
-		services[i].Vehicle = vehicle
+		services = append(services, service)
 	}
 
-	types.ServicesByDate(services)
-
-	return services, nil
+	return services, rows.Err()
 }
 
 // ImportServices writes a batch of shop visits, on the same re-runnable terms
 // as ImportFillups.
 func ImportServices(services []types.Service, by string) (added int, updated int, err error) {
-	for _, service := range services {
-		id := types.ServiceID(service.On, service.Odometer)
+	err = inTransaction(func(tx *sql.Tx) error {
+		added, updated = 0, 0
 
-		_, getErr := GetService(service.Vehicle, id)
-		switch {
-		case getErr == nil:
-			updated++
+		for _, service := range services {
+			id := types.ServiceID(service.On, service.Odometer)
 
-		case errors.Is(getErr, ServiceNotFoundErr):
-			added++
+			_, getErr := getService(tx, service.Vehicle, id)
+			switch {
+			case getErr == nil:
+				updated++
 
-		default:
-			return added, updated, getErr
+			case errors.Is(getErr, ServiceNotFoundErr):
+				added++
+
+			default:
+				return getErr
+			}
+
+			if _, err := saveService(tx, service, "", by); err != nil {
+				return err
+			}
 		}
 
-		if _, err := SaveService(service, "", by); err != nil {
-			return added, updated, err
-		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, 0, err
 	}
 
 	return added, updated, nil
 }
 
-// ------------------------------------------------------------- tolerance ----
+// ---------------------------------------------------------------- limits ----
 
-// tolerateFieldMismatch turns the one error worth ignoring into no error. An
-// entity written by an older version of this binary, or by hand in the console,
-// can carry properties the struct has no field for. Everything the struct does
-// know about loaded fine.
-func tolerateFieldMismatch(err error) error {
-	if err == nil || isFieldMismatch(err) {
-		return nil
+// withLimit puts a cap on a query, as a bound value rather than in the text.
+func withLimit(query string, limit int, args []any) (string, []any) {
+	if limit > 0 {
+		return query + " LIMIT ?", append(args, limit)
 	}
 
-	// GetAll reports per-entity problems as a MultiError, which doesn't unwrap.
-	var multi datastore.MultiError
-	if errors.As(err, &multi) {
-		for _, single := range multi {
-			if single != nil && !isFieldMismatch(single) {
-				return err
-			}
-		}
-		return nil
-	}
-
-	return err
-}
-
-func isFieldMismatch(err error) bool {
-	var mismatch *datastore.ErrFieldMismatch
-	return errors.As(err, &mismatch)
+	return query, args
 }
