@@ -134,9 +134,10 @@ func Confirm(c *gin.Context) {
 	addedFills, updatedFills, err := data.ImportFillups(preview.FillupsToImport(), by)
 	if err != nil {
 		log.Printf("could not import fill-ups to %s: %s", page.Vehicle.Slug, err.Error())
-		// Whatever went in before the failure stays in, and is reported, because
-		// telling somebody nothing happened when half of it did is how an import
-		// gets run twice by hand.
+		// The batch is one transaction, so nothing of it went in - but the
+		// message still says "may have", because the shop visits below are a
+		// second batch and somebody reading this has no way to tell which half
+		// they are looking at. Either way, re-running it is the answer.
 		access.Failed(c, "Something went wrong partway through. Some entries may have been imported - read it again and re-run it; nothing will be doubled.")
 		return
 	}

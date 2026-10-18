@@ -14,8 +14,8 @@ import (
 	"unicode"
 )
 
-// MaxLength caps a slug so it stays a comfortable url and a legal datastore key
-// name. Datastore allows far more; this is about readability.
+// MaxLength caps a slug so it stays a comfortable url and a comfortable primary
+// key. The database allows far more; this is about readability.
 const MaxLength = 80
 
 // Make turns text into a url-safe slug: "Dallas Stars" becomes "dallas-stars".

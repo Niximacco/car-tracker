@@ -19,7 +19,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /bin/car-tracker ./cmd/
 FROM alpine:3.21 AS deploy
 RUN apk --no-cache add ca-certificates && update-ca-certificates
 
-# Nothing here needs to be root, and Cloud Run does not require it.
+# Nothing here needs to be root. The one directory this writes is the database's
+# own, which the host mounts at /db and makes writable by whichever uid an image
+# turns out to run as.
 RUN adduser -D -u 10001 cartracker
 USER cartracker
 

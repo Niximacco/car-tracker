@@ -7,8 +7,8 @@
 # of spreadsheet history the first import offers is a pair of csv files inside
 # the binary - so a static asset is cached forever without there being a second
 # place to deploy to and keep in step. Same shape as wild-games, flight-log and
-# niximacco-recipes. The running service talks to datastore, to auth.ajn.me, and
-# to nothing further.
+# niximacco-recipes. The running service talks to a SQLite file of its own on
+# the host, to auth.ajn.me, and to nothing further.
 #
 # To configure this workflow:
 #
@@ -22,10 +22,11 @@
 #    needs roles/artifactregistry.writer to push, and has to be one of the
 #    DEPLOYERS the host accepts in order to deploy.
 #
-# 3. Everything about how the service runs - its environment, its secrets, the
-#    domains in front of it, its memory limit and the permissions it runs with -
-#    is in Niximacco/pillar-of-autumn (host/compose.yaml, host/secrets.json,
-#    host/Caddyfile and terraform/), under the name in SERVICE below.
+# 3. Everything about how the service runs - its environment, the names of its
+#    secrets, the domains in front of it, its memory limit and the tables of its
+#    database - is in pillar.json at the top of this repository, which the
+#    deploy step below posts. What is left in Niximacco/pillar-of-autumn is each
+#    secret's value, on the dashboard's Secrets page, and terraform/.
 
 name: Build and Deploy
 
@@ -56,8 +57,10 @@ jobs:
       # The tests cover the parts that are painful to debug in production: the
       # whole summary block checked against the numbers the spreadsheet has been
       # showing for four years, the rule that decides which tanks carry an mpg,
-      # the spreadsheet reader, the route set gin builds at startup, and every
-      # template rendering - a template only fails when it is asked to render.
+      # the spreadsheet reader, the route set gin builds at startup, every
+      # template rendering - a template only fails when it is asked to render -
+      # and now the data layer too, against a temporary file with the tables
+      # pillar.json declares.
       - name: Test
         run: go test ./...
 
@@ -118,14 +121,19 @@ jobs:
           id_token_audience: 'https://ops.ajn.me'
           id_token_include_email: true
 
-      # The host pulls this build, recreates the container on it and waits for
-      # it to report healthy. If it does not, the previous build goes back and
-      # this step fails - a broken build is a red check on the commit that broke
-      # it, with the site still up on the one before.
+      # pillar.json is the whole definition - the container, its site, its
+      # environment and the tables of its database - and this posts it with the
+      # commit added as the build to run. The host brings itself in line with
+      # it, makes any new table or column before the container starts, and waits
+      # for the container to report healthy. If it does not, the previous build
+      # and definition go back and this step fails - a broken build is a red
+      # check on the commit that broke it, with the site still up on the one
+      # before.
       - name: Deploy to pillar-of-autumn
         run: |-
-          curl --fail-with-body --silent --show-error --max-time 300 \
-            -X POST https://ops.ajn.me/api/deploy \
-            -H "Authorization: Bearer ${{ steps.deploy-token.outputs.id_token }}" \
-            -H "Content-Type: application/json" \
-            -d '{"service": "${{ env.SERVICE }}", "tag": "${{ github.sha }}"}'
+          jq --arg tag "${{ github.sha }}" '. + {tag: $tag}' pillar.json |
+            curl --fail-with-body --silent --show-error --max-time 300 \
+              -X POST https://ops.ajn.me/api/deploy \
+              -H "Authorization: Bearer ${{ steps.deploy-token.outputs.id_token }}" \
+              -H "Content-Type: application/json" \
+              --data-binary @-

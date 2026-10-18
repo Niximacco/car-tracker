@@ -20,7 +20,7 @@ at a pump holding a nozzle. The point of this site is to be faster than the form
 "check your email" at the pump is slower than the form it replaces.
 
 The length is not the revocation window, which is what makes it cheap. Every request re-reads the
-account from datastore, so disabling one ends its sessions on the next click no matter how long its
+account from the database, so disabling one ends its sessions on the next click no matter how long its
 token had left. A year is what somebody would have to keep an unlocked phone for, not what they would
 keep access for after being shut out. It stays under 400 days deliberately: browsers cap cookie
 lifetime there, and anything longer is silently clamped rather than honoured.
@@ -31,7 +31,7 @@ send caps all live there. What stays here is the half a shared service cannot ho
 in**. The user list, the session cookie and its signing key are ours, and the service is asked nothing
 but "did this person prove they can read that address".
 
-Go, gin and Cloud Datastore. It renders its own html from templates compiled into the binary, draws
+Go, gin and SQLite. It renders its own html from templates compiled into the binary, draws
 its own charts as inline svg with nothing fetched from anywhere, and carries the old spreadsheet
 inside itself as two csv files — so a deploy is one container and there is nothing to sync anywhere.
 
@@ -215,7 +215,7 @@ gives **28 December 2021 at 68,074 miles**. Those are pre-filled on the vehicle;
 | **Read only** | Can look at anything shared with them and change nothing |
 | **Blocked** | Kept for history, cannot sign in |
 
-An account's flags are read from datastore on every request rather than carried in the token, so
+An account's flags are read from the database on every request rather than carried in the token, so
 revoking access takes effect on somebody's next click rather than whenever the cookie happens to
 expire. That is what makes the long session below safe: its length is what somebody would have to
 keep an unlocked device for, not what they would keep access for after being shut out.
@@ -233,10 +233,9 @@ variable and a redeploy.
 
 | Variable | Required | What it is |
 |---|---|---|
-| `DATASTORE_PROJECT_ID` | yes | GCP project, `ajnhosting-163818` |
-| `DATASTORE_NAMESPACE` | yes | Datastore namespace, `cartracker` |
+| `DATABASE_PATH` | yes | The SQLite file, with its tables already made. The deploy sets it, to `/db/car-tracker.sqlite` |
 | `JWT_SIGNING_KEY` | yes | Signs session cookies. The service refuses to start without it |
-| `APP_BASE_URL` | yes in production | Public origin, `https://car.ajn.me` |
+| `APP_BASE_URL` | yes in production | Public origin, `https://cars.ajn.me` |
 | `SITE_NAME` | no | What the pages call this. Defaults to `Car Tracker` |
 | `AJN_AUTH_URL` | for login | The magic link service, `https://auth.ajn.me` |
 | `AJN_AUTH_API_KEY` | for login | This site's key, generated in the service's admin pages. Without it nobody can sign in |
@@ -247,11 +246,11 @@ variable and a redeploy.
 | `SESSION_COOKIE_NAME` | no | Defaults to `ct_session` |
 | `COOKIE_DOMAIN` | no | Leave unset for a host-only cookie |
 | `COOKIE_SECURE` | no | Set `false` only for plain http local development |
-| `TRUSTED_PROXY_DEPTH` | no | `0` is right behind a Cloud Run domain mapping. A load balancer or CDN in front adds a hop |
+| `TRUSTED_PROXY_DEPTH` | no | `0` is right behind the host's Caddy, which replaces `X-Forwarded-For` with the address it was connected from. A load balancer or CDN in front adds a hop |
 
 `BOOTSTRAP_ADMIN_EMAIL` is safe to leave set: an existing user is never touched, so it cannot be used
 to quietly restore admin to somebody who had it taken away. It is the way out of the chicken-and-egg a
-brand new namespace is in — nobody can sign in, and only somebody signed in can let anybody in.
+brand new database is in — nobody can sign in, and only somebody signed in can let anybody in.
 
 There is no `RESEND_API_KEY` here and no `MAIL_FROM`. This service sends no email of its own: the only
 message it ever caused was the sign-in link, and that belongs to `auth.ajn.me` now.
@@ -266,8 +265,8 @@ exchange code to a url that site did not register. Both live in the roster, edit
 |---|---|
 | Id | `car-tracker` |
 | Name | `Car Tracker` |
-| Base url | `https://car.ajn.me` |
-| Redirect uris | `https://car.ajn.me/auth/callback`, and `http://localhost:8080/auth/callback` to develop against the deployed service |
+| Base url | `https://cars.ajn.me` |
+| Redirect uris | `https://cars.ajn.me/auth/callback`, and `http://localhost:8080/auth/callback` to develop against the deployed service |
 | From | `Car Tracker <login@ajn.me>` |
 | Accent | `#1d4e77` — the site's own `--accent`, so the button in the email is the button on the page |
 
@@ -311,49 +310,78 @@ Icons come from a Font Awesome kit, which may not be configured. Everything on e
 in words as well, so a kit that is missing, blocked or slow leaves a site with no icons on it rather
 than a site with holes in it.
 
-### Datastore
+### The database
 
-Four kinds, in one namespace:
+One SQLite file of this service's own, on the host, at `DATABASE_PATH`. There is no database server:
+SQLite is a library in this process, so the database costs nothing while nobody is using it and no
+memory but ours. Four tables, declared in [`pillar.json`](pillar.json) and made by the deploy before
+the container starts:
 
-| Kind | Key | Notes |
+| Table | Primary key | Notes |
 |---|---|---|
-| `user` | Lower-cased email | Having one is what grants access |
-| `vehicle` | Slug, `the-wagon` | |
-| `fillup` | `2026-08-11-95176`, **child of its vehicle** | The day and the odometer reading |
-| `service` | `2026-08-07-95077`, **child of its vehicle** | The same |
+| `users` | Lower-cased email | Having a row is what grants access |
+| `vehicles` | Slug, `the-wagon` | The share list is JSON in a text column |
+| `fillups` | `(vehicle, id)`, the id being `2026-08-11-95176` | `vehicle` references `vehicles.slug` on delete cascade |
+| `services` | `(vehicle, id)`, the id being `2026-08-07-95077` | The same |
 
-Entries hang off their vehicle as datastore children rather than carrying the vehicle in a property,
-and two things follow from that. An ancestor query is strongly consistent, so pasting four years of
-history and then looking at it cannot show a car with half its fill-ups missing. And an entry's id
-only has to be unique inside its own car — which is what lets the id be the day and the reading rather
-than a random string, and that is what makes an import safe to run twice.
+Entries carry their vehicle's slug, and the primary key is the pair, so two things follow. Everything
+a car's pages ask for is one read of one table, so pasting four years of history and then looking at
+it cannot show a car with half its fill-ups missing. And an entry's id only has to be unique inside
+its own car — which is what lets the id be the day and the reading rather than a random string, and
+that is what makes an import safe to run twice.
 
-Deleting a vehicle deletes its entries first. Entries that outlived their vehicle would be rows
-nothing can reach and nothing can delete, since every query for them is an ancestor query on a key
-that no longer resolves.
+Deleting a vehicle takes its entries with it, through the reference on the column rather than a loop
+in the code. `foreign_keys` is per connection in SQLite, so the data layer turns it on when it opens
+the file; entries that outlived their vehicle would be rows the site has no page for and no way to
+delete.
 
-None of the list queries carries a sort order. Sorting in datastore alongside an ancestor filter would
-need a composite index for the sake of ordering a few hundred rows that are about to be held in memory
-anyway.
+Every table is `STRICT`, so a value of the wrong type is an error rather than a surprise, and the
+columns are named in `internal/cloud` beside the statements that read them. A column is added by
+declaring it in `pillar.json`: the deploy adds it before the container starts, and a change that
+would lose or rewrite data is refused instead. Backups are the host's — every database is copied to
+Cloud Storage nightly, and restoring one is a button on its page in the dashboard.
+
+A car's fuel and service history is ordered by the database, oldest first on the day and then the
+reading, so a list cap takes the history rather than an arbitrary page of it. The garage is ordered
+here instead, because what it sorts on — whether a car is retired, and the name `Called()` falls back
+to when it has none of its own — is worked out in `types` rather than stored.
+
+#### What used to be in Datastore
+
+The same four shapes were the `user`, `vehicle`, `fillup` and `service` kinds in the `cartracker`
+namespace, with fill-ups and shop visits as datastore children of their vehicle rather than rows
+referencing it. The move across was one import: the `datastore` mapping in `pillar.json` says which
+property went in which column, and the dashboard's **Check import** and **Import from Datastore** on
+the database's page did the copying. The mapping is kept for a little while after the cutover,
+because it is also how the import would be run again, and then it goes along with the `DATASTORE_*`
+variables.
+
+Six properties are deliberately left behind, listed as `ignore` in that mapping. `Email`, `Slug` and
+`ID` only repeat the key the row is already stored under, and `Vehicle` on a fill-up or a shop visit
+repeats the parent key the `parent` mapping puts in the `vehicle` column. Three column names differ
+from the property they hold: `On` is `on_date` and `By` is `logged_by`, because `on` and `by` are
+SQL keywords.
 
 ## Running it locally
 
-Everything except datastore runs with no cloud access at all:
+Everything runs with no cloud access at all — including the tests, which make their own database in a
+temporary directory out of the tables `pillar.json` declares:
 
 ```bash
 go test ./...
 ```
 
-To run the service you need the datastore emulator:
+To run the service you need a database with its tables in it. `tools/localdb` makes one from the same
+`pillar.json` the deploy posts, and leaves a file that already has them alone:
 
 ```bash
-gcloud beta emulators datastore start --project=ajnhosting-163818 --host-port=localhost:8081
+go run ./tools/localdb car-tracker.sqlite
 ```
 
-Then, in another shell:
+Then:
 
 ```bash
-export DATASTORE_EMULATOR_HOST=localhost:8081 DATASTORE_PROJECT_ID=ajnhosting-163818 DATASTORE_NAMESPACE=cartracker JWT_SIGNING_KEY=local-development-only APP_BASE_URL=http://localhost:8080 COOKIE_SECURE=false BOOTSTRAP_ADMIN_EMAIL=you@example.com BOOTSTRAP_ADMIN_NAME=You && go run ./cmd/car-tracker
+export DATABASE_PATH=car-tracker.sqlite JWT_SIGNING_KEY=local-development-only APP_BASE_URL=http://localhost:8080 COOKIE_SECURE=false BOOTSTRAP_ADMIN_EMAIL=you@example.com BOOTSTRAP_ADMIN_NAME=You && go run ./cmd/car-tracker
 ```
 
 With no `AJN_AUTH_URL` and `AJN_AUTH_API_KEY` the login form says sign in is unavailable, because
@@ -374,6 +402,15 @@ to survive; add the variable if you want to see them locally.
 ## What the tests cover
 
 They are the parts that are painful to debug in production, and nothing that needs a cloud connection:
+
+- **The data layer**, against a database made in a temporary directory out of the tables
+  `pillar.json` declares — so a column the code reads that the file does not declare fails a test
+  rather than a deploy. What it pins is the behaviour that is easy to break and hard to notice: an
+  edit keeping who logged the entry first and when, a corrected odometer writing a new entry and
+  taking the old one with it, the same rows imported twice updating rather than doubling, a batch
+  that fails writing none of itself, a share list surviving the round trip through its JSON column,
+  admin and view-only cancelling each other out, and deleting a car taking its own history with it
+  and nobody else's.
 
 - **The summary block, against the spreadsheet.** `internal/seed` loads the four years of embedded
   history and checks every figure the sheet showed: total miles, days owned, days at the last fill,
@@ -409,20 +446,29 @@ They are the parts that are painful to debug in production, and nothing that nee
 
 ## Deploying
 
-A commit on `main` runs the tests, builds the container, pushes it to Artifact Registry and deploys it
-to Cloud Run. Authentication to Google is keyless, through Workload Identity Federation: GitHub mints
-a short-lived OIDC token and Google exchanges it for one on the deploy service account, so there is no
-JSON key to store or rotate.
+A commit on `main` runs the tests, builds the container, pushes it to Artifact Registry and posts
+[`pillar.json`](pillar.json) to the pillar-of-autumn host with that commit as the build to run.
+Authentication to Google is keyless, through Workload Identity Federation: GitHub mints a short-lived
+OIDC token and Google exchanges it for one on the deploy service account, so there is no JSON key to
+store or rotate, and the token the host is sent is an identity token for `ops.ajn.me` minted as that
+same account.
 
-Setting it up is in the header of `.github/workflows/google-cloudrun-docker.yml`. In short: enable Cloud
-Run, Artifact Registry and Datastore; create the Artifact Registry repository named `car-tracker` in
-`us-central1`; add the `WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT` repository secrets and bind this repo
-to that service account; and give the Cloud Run service's own runtime account `roles/datastore.user`
-plus access to the secrets above.
+`pillar.json` is the whole definition — the image, the site in front of it, the environment, the
+names of its secrets, its memory limit and the tables of its database. The host brings itself in line
+with it, makes any new table or column before the container starts, and waits for the container to
+report healthy on `/healthz`. If it does not, the previous build and definition go back and the
+deploy fails: a broken build is a red check on the commit that broke it, with the site still up on
+the one before. What is left in `Niximacco/pillar-of-autumn` is each secret's value, on the
+dashboard's Secrets page, and `terraform/`.
 
-`car.ajn.me` is a Cloud Run domain mapping onto the service. It has to match `APP_BASE_URL` and the
-base url registered at `auth.ajn.me`, or the sign-in link comes back somewhere the session cookie is
-not.
+Setting it up is in the header of `.github/workflows/google-cloudrun-docker.yml`. In short: the
+Artifact Registry repository named `car-tracker` in `us-central1`; the `WIF_PROVIDER` and
+`WIF_SERVICE_ACCOUNT` repository secrets, with this repo bound to that service account; and that
+account on the host's list of accepted deployers.
+
+`cars.ajn.me` is a domain in `pillar.json`, which the host puts Caddy in front of and gets a
+certificate for. It has to match `APP_BASE_URL` and the base url registered at `auth.ajn.me`, or the
+sign-in link comes back somewhere the session cookie is not.
 
 ## Moving the sheet over
 

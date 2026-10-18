@@ -40,10 +40,10 @@ func init() {
 
 // bootstrapAdmin creates the first account, if one is named and does not exist.
 //
-// Access is granted by having an entity in the user kind, and only an admin can
-// create one - so a brand new namespace has nobody who can sign in and nobody
-// who can let anybody in. This is the way out of that, without hand-writing an
-// entity in the console.
+// Access is granted by having a row in the users table, and only an admin can
+// create one - so a brand new database has nobody who can sign in and nobody
+// who can let anybody in. This is the way out of that, without hand-writing a
+// row into the file on the host.
 //
 // It is safe to leave set: an existing user is never touched, so it cannot be
 // used to quietly restore admin to somebody who had it taken away.
@@ -78,7 +78,8 @@ func main() {
 
 	router := router.New()
 
-	// Cloud Run needs something to probe that does not require a session.
+	// The host needs something to probe that does not require a session. It is
+	// the health_path in pillar.json, and a deploy waits on it.
 	router.GET("/healthz", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})

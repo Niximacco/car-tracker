@@ -306,9 +306,9 @@ type Fillup struct {
 	// import you can re-run and one you get a single attempt at. Two fill-ups
 	// on one day at one reading are the same fill-up.
 	ID string `json:"id"`
-	// Vehicle is the slug of the car this belongs to. Fill-ups are datastore
-	// children of their vehicle, so this is a copy for the sake of code holding
-	// one on its own.
+	// Vehicle is the slug of the car this belongs to. It is half of a fill-up's
+	// primary key - an id only has to be unique inside its own car - and the
+	// column references the vehicle, so a car's history goes when the car does.
 	Vehicle string `json:"vehicle"`
 
 	// On is the day, "2006-01-02".

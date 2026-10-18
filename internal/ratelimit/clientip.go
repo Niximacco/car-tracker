@@ -1,5 +1,5 @@
 // Package ratelimit keeps a caller from turning cheap http requests into
-// expensive work: datastore reads, cloud run instance time, and above all
+// expensive work: database reads, instance time on the host, and above all
 // outbound email.
 package ratelimit
 
@@ -18,12 +18,10 @@ import (
 // caller. Everything to the left of those is caller-supplied and forgeable, so
 // the header is read right to left and this many entries are stepped over.
 //
-// This service is reached through a Cloud Run domain mapping, which is exactly
-// one hop: Google's front end appends the connecting address to whatever the
-// caller sent. That makes the rightmost entry the real client and 0 the correct
-// depth. Confirmed against Cloud Run request logs - a request carrying a forged
-// X-Forwarded-For was still logged with the true remote address, so the front
-// end is appending rather than trusting what it was handed.
+// This service is reached through the pillar-of-autumn host's Caddy, which
+// replaces any X-Forwarded-For a caller sends with the address it actually
+// connected from. That makes the rightmost entry the real client and 0 the
+// correct depth - a forged header never survives the hop in front of us.
 //
 // Putting a load balancer or a CDN in front of this adds a hop. Set
 // TRUSTED_PROXY_DEPTH in the environment rather than editing this.

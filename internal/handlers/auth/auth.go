@@ -30,8 +30,8 @@ var login = authclient.New()
 // nothing here decides anything from it.
 const LINK_VALID_MINUTES = 15
 
-// The two routes that turn an anonymous request into datastore work get a per
-// caller ceiling. This is about the cost of being probed - datastore reads and
+// The two routes that turn an anonymous request into work on the database get a
+// per caller ceiling. This is about the cost of being probed - reads and
 // instance time - rather than about email: an address that is not on the allow
 // list never reaches the service at all, and the ones that are have their own
 // per-address caps there. Both are generous enough that a person retrying will

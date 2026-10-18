@@ -13,7 +13,7 @@ import (
 
 // A throwaway that writes the two big pages to disk, drawn from the four years
 // of history compiled into the binary, so they can be looked at in a browser
-// without a datastore behind them. It only runs when it is asked for by name
+// without a database behind them. It only runs when it is asked for by name
 // and a directory to write into, so an ordinary "go test ./..." never sees it.
 //
 //	CAR_TRACKER_PREVIEW_DIR=/some/dir go test ./internal/web/ -run Preview

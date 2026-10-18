@@ -439,7 +439,7 @@ func decimal(typed string) (float64, error) {
 // date reads a date field. A browser's date input hands back exactly the layout
 // everything is stored in, so this is a check rather than a conversion: a value
 // that is not that layout came from somewhere other than the form and is not
-// going into datastore.
+// going into the database.
 func date(typed string) (string, error) {
 	typed = strings.TrimSpace(typed)
 	if typed == "" {

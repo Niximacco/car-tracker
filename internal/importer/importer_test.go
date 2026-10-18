@@ -140,7 +140,7 @@ not a date,Somewhere,90400,12,3.20
 		}
 	}
 
-	// Nothing unreadable goes anywhere near datastore.
+	// Nothing unreadable goes anywhere near the database.
 	if len(preview.FillupsToImport()) != 2 {
 		t.Errorf("%d fill-ups would be written, want 2", len(preview.FillupsToImport()))
 	}

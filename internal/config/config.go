@@ -11,7 +11,7 @@ var (
 	// BASE_URL is the public origin the service is reached at. It is what this
 	// site is registered at auth.ajn.me under, so it has to match what the
 	// browser actually sees or no sign-in link will come back to it.
-	BASE_URL = "https://car.ajn.me"
+	BASE_URL = "https://cars.ajn.me"
 	// SITE_NAME is what the pages call this service.
 	SITE_NAME = "Car Tracker"
 	// FONTAWESOME_KIT is the id of the Font Awesome kit that draws the icons,

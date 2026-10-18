@@ -17,7 +17,14 @@ import (
 
 var (
 	JWT_SIGNING_KEY []byte
-	AUDIENCE        = os.Getenv("DATASTORE_NAMESPACE")
+	// AUDIENCE is who this site's session tokens are issued to, and what every
+	// one of them is checked against.
+	//
+	// It used to be read from DATASTORE_NAMESPACE, which is where the spelling
+	// comes from. It is written down here instead now that nothing else reads
+	// that variable, because changing the value would refuse every session
+	// cookie already out there and sign the whole site out at a pump.
+	AUDIENCE = "cartracker"
 
 	COOKIE_NAME   = "ct_session"
 	COOKIE_DOMAIN = ""
@@ -46,7 +53,7 @@ const (
 	// slower than the form it replaces.
 	//
 	// The length is not the revocation window, which is what makes this cheap.
-	// Every request re-reads the account from datastore, so disabling one ends
+	// Every request re-reads the account from the database, so disabling one ends
 	// its sessions on the next click no matter how long its token had left. A
 	// year is what somebody would have to keep an unlocked device for, not what
 	// they would keep access for after being shut out.
@@ -64,7 +71,7 @@ const (
 	// contextUserKey holds the loaded user entity on the gin context.
 	contextUserKey = "auth_user"
 	// contextConfirmedKey records whether that user really came out of
-	// datastore, or is the placeholder authenticate falls back to.
+	// the database, or is the placeholder authenticate falls back to.
 	contextConfirmedKey = "auth_confirmed"
 )
 
@@ -250,7 +257,7 @@ func resolve(c *gin.Context) (email string, err error) {
 }
 
 // authenticate resolves the session and confirms the account behind it is still
-// allowed in. Access revoked in datastore therefore takes effect on the next
+// allowed in. Access revoked in the database therefore takes effect on the next
 // request, rather than whenever the cookie happens to expire - which, at a
 // year, would be far too late to be the answer to anything.
 //
@@ -274,7 +281,7 @@ func authenticate(c *gin.Context) (email string, err error) {
 		return "", err
 
 	default:
-		// Datastore having a bad moment must not sign everybody out. Only an
+		// The database having a bad moment must not sign everybody out. Only an
 		// explicit revocation closes the door; anything else fails open.
 		//
 		// Staying signed in is what fails open, though, and not what the
@@ -294,7 +301,7 @@ func authenticate(c *gin.Context) (email string, err error) {
 }
 
 // Confirmed reports whether the account behind this request was actually read
-// out of datastore rather than assumed.
+// out of the database rather than assumed.
 func Confirmed(c *gin.Context) bool {
 	confirmed, ok := c.Get(contextConfirmedKey)
 	if !ok {
@@ -359,7 +366,7 @@ func RequiredPage() gin.HandlerFunc {
 // user. The handlers do that, because they are the only thing that has loaded
 // the vehicle by then.
 //
-// Like admin, the flag is read from datastore on every request rather than
+// Like admin, the flag is read from the database on every request rather than
 // carried in the token, so taking somebody's editing away takes effect on their
 // next click instead of whenever a year-long cookie happens to expire.
 func Editor() gin.HandlerFunc {
@@ -372,7 +379,7 @@ func Editor() gin.HandlerFunc {
 		}
 
 		// The account could not be read, so what it may do is unknown. A write
-		// would almost certainly fail at datastore a moment later anyway, so
+		// would almost certainly fail at the database a moment later anyway, so
 		// refusing it here costs nothing and closes the window where a
 		// view-only account looks like an ordinary one.
 		if !Confirmed(c) {
@@ -389,7 +396,7 @@ func Editor() gin.HandlerFunc {
 // is allowed to sign in goes through it, and so does reaching a car nobody
 // shared with you.
 //
-// Admin status is read from datastore on every request rather than carried in
+// Admin status is read from the database on every request rather than carried in
 // the token, so revoking it takes effect immediately instead of waiting out a
 // year-long cookie.
 func Admin() gin.HandlerFunc {
