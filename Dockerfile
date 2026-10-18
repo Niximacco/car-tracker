@@ -1,4 +1,7 @@
-FROM golang:1.25-alpine AS build
+# The builder tracks the go directive in go.mod, which modernc.org/sqlite
+# raised to 1.26: an older builder refuses the module rather than downloading a
+# toolchain, because these images are built with GOTOOLCHAIN=local.
+FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 
