@@ -11,10 +11,8 @@
     "health_path": "/healthz",
     "memory_mib": 128,
     "env": {
-      "DATASTORE_PROJECT_ID": "ajnhosting-163818",
       "FONTAWESOME_KIT": "df88468b70",
       "AJN_AUTH_URL": "https://auth.ajn.me",
-      "DATASTORE_NAMESPACE": "cartracker",
       "APP_BASE_URL": "https://cars.ajn.me",
       "SITE_NAME": "Car Tracker",
       "BOOTSTRAP_ADMIN_EMAIL": "ajn0592@gmail.com",
@@ -102,32 +100,6 @@
           ],
           "primary_key": ["vehicle", "id"]
         }
-      },
-      "datastore": {
-        "namespace": "cartracker",
-        "kinds": {
-          "user": {
-            "table": "users", "key": "email",
-            "columns": {"Name": "name", "Created": "created", "LastLogin": "last_login", "Admin": "admin", "ViewOnly": "view_only", "Disabled": "disabled", "DefaultVehicle": "default_vehicle"},
-            "ignore": ["Email"]
-          },
-          "vehicle": {
-            "table": "vehicles", "key": "slug",
-            "columns": {"Name": "name", "Year": "year", "Make": "make", "Model": "model", "Trim": "trim", "Plate": "plate", "VIN": "vin", "Owner": "owner", "SharedWith": "shared_with", "PurchasedOn": "purchased_on", "PurchaseOdometer": "purchase_odometer", "PurchasePriceCents": "purchase_price_cents", "TankGallons": "tank_gallons", "Retired": "retired", "SoldOn": "sold_on", "SoldOdometer": "sold_odometer", "SoldPriceCents": "sold_price_cents", "Created": "created", "Updated": "updated"},
-            "ignore": ["Slug"]
-          },
-          "fillup": {
-            "table": "fillups", "key": "id", "parent": "vehicle",
-            "columns": {"On": "on_date", "At": "at", "Odometer": "odometer", "Gallons": "gallons", "PricePerGallonCents": "price_per_gallon_cents", "FuelSaverCents": "fuel_saver_cents", "CostCents": "cost_cents", "Station": "station", "Note": "note", "Partial": "partial", "Missed": "missed", "By": "logged_by", "Created": "created", "Updated": "updated"},
-            "ignore": ["ID", "Vehicle"]
-          },
-          "service": {
-            "table": "services", "key": "id", "parent": "vehicle",
-            "columns": {"On": "on_date", "Odometer": "odometer", "Shop": "shop", "Work": "work", "CostCents": "cost_cents", "Note": "note", "By": "logged_by", "Created": "created", "Updated": "updated"},
-            "ignore": ["ID", "Vehicle"]
-          }
-        },
-        "ignore_kinds": []
       }
     }
   }

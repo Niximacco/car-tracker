@@ -350,13 +350,12 @@ to when it has none of its own — is worked out in `types` rather than stored.
 
 The same four shapes were the `user`, `vehicle`, `fillup` and `service` kinds in the `cartracker`
 namespace, with fill-ups and shop visits as datastore children of their vehicle rather than rows
-referencing it. The move across was one import: the `datastore` mapping in `pillar.json` says which
+referencing it. The move across was one import: a `datastore` mapping in `pillar.json` said which
 property went in which column, and the dashboard's **Check import** and **Import from Datastore** on
-the database's page did the copying. The mapping is kept for a little while after the cutover,
-because it is also how the import would be run again, and then it goes along with the `DATASTORE_*`
-variables.
+the database's page did the copying. Once the move had settled the mapping came out of `pillar.json`,
+along with the `DATASTORE_*` variables; it is in this file's history.
 
-Six properties are deliberately left behind, listed as `ignore` in that mapping. `Email`, `Slug` and
+Six properties were deliberately left behind, listed as `ignore` in that mapping. `Email`, `Slug` and
 `ID` only repeat the key the row is already stored under, and `Vehicle` on a fill-up or a shop visit
 repeats the parent key the `parent` mapping puts in the `vehicle` column. Three column names differ
 from the property they hold: `On` is `on_date` and `By` is `logged_by`, because `on` and `by` are
